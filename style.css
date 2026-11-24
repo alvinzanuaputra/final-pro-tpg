@@ -1,0 +1,134 @@
+:root {
+  color-scheme: dark;
+  --background: #10171c;
+  --panel: #172229;
+  --well: #0c1419;
+  --line: #30434c;
+  --ink: #edf2e8;
+  --muted: #adc0bd;
+  --accent: #f6cc7b;
+  --teal: #76cebf;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--background);
+  color: var(--ink);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-width: 280px;
+  min-height: 100vh;
+  background: radial-gradient(ellipse at 45% 0%, #22323a, transparent 60%), var(--background);
+}
+button, select, input { font: inherit; }
+button {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 7px 11px;
+  background: #202d34;
+  color: var(--ink);
+  cursor: pointer;
+}
+button:hover:not(:disabled), button.is-held { background: #304651; border-color: var(--teal); }
+button:disabled { opacity: .55; cursor: default; }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+[hidden] { display: none !important; }
+
+.shell { width: min(760px, calc(100% - 32px)); margin: 0 auto; padding: clamp(12px, 3vh, 28px) 0 18px; }
+.shell:focus { outline: 0; }
+.masthead { display: flex; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.brand, .toolbar { display: flex; align-items: center; gap: 8px; }
+.brand-mark { display: grid; grid-template-columns: repeat(2, 6px); gap: 3px; margin-right: 3px; transform: rotate(-12deg); }
+.brand-mark i { width: 6px; height: 6px; background: var(--accent); }
+.brand-mark i:nth-child(2) { background: var(--teal); }
+.brand-mark i:nth-child(3) { background: #a487d8; }
+.brand-mark i:nth-child(4) { opacity: .45; }
+h1 { margin: 0; font-size: clamp(1.45rem, 4vw, 2rem); letter-spacing: -.06em; line-height: 1; }
+h1 span { color: var(--accent); }
+.toolbar button { font-size: .875rem; min-height: 38px; }
+
+.machine { display: grid; grid-template-columns: minmax(0, 1fr) minmax(146px, 212px); gap: 12px; align-items: stretch; }
+.playfield {
+  min-width: 0;
+  background: #19252b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 12px 34px #0003;
+}
+.field-head { min-height: 25px; display: flex; justify-content: space-between; align-items: center; padding: 0 4px 6px; }
+.field-label, .level, .panel h2 { font-size: .875rem; font-weight: 700; }
+.field-label { color: var(--muted); }
+.level { color: var(--teal); font-variant-numeric: tabular-nums; }
+.well {
+  min-height: 101px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 2px;
+  background: var(--well);
+  border: 1px solid #435764;
+  border-radius: 4px;
+  box-shadow: inset 0 0 20px #0005;
+}
+#arena { display: block; image-rendering: pixelated; }
+.field-status { min-height: 20px; margin: 5px 4px 0; font-size: .875rem; color: var(--muted); }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 8px; background: #090f16b0; }
+.overlay-card {
+  width: min(265px, 94%);
+  padding: clamp(10px, 2.5vw, 19px);
+  background: #17252cf5;
+  border: 1px solid #536970;
+  border-radius: 6px;
+  text-align: center;
+  box-shadow: 0 10px 22px #0006;
+}
+.overlay h2 { margin: 0; color: var(--accent); font-size: clamp(1.1rem, 3vw, 1.55rem); }
+.overlay p { margin: 6px 0 12px; font-size: .875rem; color: var(--muted); }
+.primary { background: var(--accent); color: #241c12; border-color: #f6dc9a; font-weight: 750; }
+.primary:hover:not(:disabled) { background: #ffdda1; color: #241c12; }
+
+.sidebar { min-width: 0; display: grid; grid-template-rows: auto auto auto 1fr; gap: 8px; }
+.panel { min-width: 0; padding: 11px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); }
+.panel h2 { color: var(--muted); margin: 0 0 6px; line-height: 1.1; }
+.score { font: 750 clamp(1.65rem, 4vw, 2.45rem)/1.05 ui-monospace, monospace; margin: 0 0 5px; color: var(--accent); letter-spacing: -.07em; overflow-wrap: anywhere; }
+.best, #next-label, #charge-label { font-size: .875rem; margin: 0; color: var(--muted); }
+.best span { color: var(--ink); font-variant-numeric: tabular-nums; }
+.preview { display: flex; gap: 8px; align-items: center; min-height: 36px; }
+#next { display: block; width: 38px; height: 38px; image-rendering: pixelated; flex: 0 0 auto; }
+#next-label { line-height: 1.15; }
+.charge { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin: 7px 0 5px; }
+.charge span { height: 11px; border-radius: 2px; background: #263940; border: 1px solid #40535a; }
+.charge span.filled { background: var(--accent); border-color: #ffe1a2; }
+.charge.full span { background: #af91e8; border-color: #ddccff; }
+#materials { display: grid; gap: 4px; list-style: none; padding: 0; margin: 0; }
+#materials li { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: .875rem; }
+#materials li.locked { color: #8fa4a5; }
+#materials li.new { color: var(--teal); font-weight: 700; }
+#materials .symbol { width: 17px; text-align: center; color: var(--teal); }
+
+.controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.25fr); gap: 6px; margin-top: 9px; }
+.controls button { display: grid; place-items: center; gap: 2px; padding: 4px 0; min-height: 46px; touch-action: none; user-select: none; }
+.controls button:last-child { border-color: #8a754e; color: var(--accent); }
+.controls kbd { font: 700 1.12rem/1 ui-monospace, monospace; }
+.controls span { font-size: .8125rem; }
+footer { display: flex; justify-content: space-between; align-items: start; gap: 10px; margin-top: 11px; font-size: .875rem; color: var(--muted); }
+details p { max-width: 460px; margin: 6px 0 0; }
+summary { cursor: pointer; }
+.motion { white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+.motion input { accent-color: var(--teal); }
+.debug { font: .8rem ui-monospace, monospace; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+
+@media (max-width: 560px) {
+  .shell { width: calc(100% - 16px); }
+  .machine { grid-template-columns: minmax(0, 1fr) minmax(94px, 31%); gap: 6px; }
+  .playfield { padding: 5px; }
+  .sidebar { gap: 5px; }
+  .panel { padding: 7px 6px; }
+  .toolbar { gap: 4px; }
+  .toolbar button { padding: 5px 6px; }
+  .controls { gap: 4px; }
+  #next { width: 30px; height: 30px; }
+  .preview { gap: 3px; }
+}

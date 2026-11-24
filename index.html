@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10171c">
+  <title>Arus Butir</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="shell" id="game" tabindex="-1">
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <h1>Arus <span>Butir</span></h1>
+      </div>
+      <div class="toolbar">
+        <button type="button" id="sound" aria-pressed="false" aria-label="Bisukan audio">Suara aktif</button>
+        <button type="button" id="pause" disabled>Jeda</button>
+      </div>
+    </header>
+    <div class="machine">
+      <section class="playfield" aria-label="Arena permainan">
+        <div class="field-head">
+          <span class="field-label">Arena</span>
+          <span id="level" class="level">Level 1</span>
+        </div>
+        <div class="well">
+          <canvas id="arena" aria-label="Arena partikel" role="img"></canvas>
+          <div id="overlay" class="overlay">
+            <div class="overlay-card">
+              <h2 id="overlay-title">Arus Butir</h2>
+              <p id="overlay-copy">Sambungkan butiran sewarna dari dinding kiri ke dinding kanan.</p>
+              <button type="button" id="overlay-button" class="primary">Mulai main</button>
+            </div>
+          </div>
+        </div>
+        <p class="field-status" id="status" aria-live="polite">Siap dimainkan</p>
+      </section>
+      <aside class="sidebar" aria-label="Status permainan">
+        <section class="panel score-panel">
+          <h2>Skor</h2>
+          <p class="score" id="score">0</p>
+          <p class="best">Rekor <span id="best">0</span></p>
+        </section>
+        <section class="panel next-panel">
+          <h2>Berikutnya</h2>
+          <div class="preview">
+            <canvas id="next" aria-hidden="true"></canvas>
+            <p id="next-label">—</p>
+          </div>
+        </section>
+        <section class="panel charge-panel">
+          <h2>Charge</h2>
+          <div id="charge" class="charge" role="meter" aria-label="Charge Dye" aria-valuenow="0" aria-valuemin="0" aria-valuemax="3">
+            <span></span><span></span><span></span>
+          </div>
+          <p id="charge-label">0 / 3</p>
+        </section>
+        <section class="panel materials-panel">
+          <h2>Material</h2>
+          <ul id="materials"></ul>
+        </section>
+      </aside>
+    </div>
+    <div class="controls" aria-label="Kontrol permainan">
+      <button type="button" data-action="left" aria-label="Geser kiri"><kbd>←</kbd><span>Kiri</span></button>
+      <button type="button" data-action="right" aria-label="Geser kanan"><kbd>→</kbd><span>Kanan</span></button>
+      <button type="button" data-action="rotate" aria-label="Putar balok"><kbd>↑</kbd><span>Putar</span></button>
+      <button type="button" data-action="down" aria-label="Turun cepat"><kbd>↓</kbd><span>Turun</span></button>
+      <button type="button" data-action="drop" aria-label="Jatuhkan balok"><kbd>␣</kbd><span>Jatuhkan</span></button>
+    </div>
+    <footer>
+      <details>
+        <summary>Cara main</summary>
+        <p>Geser dan putar balok sebelum mendarat. Butiran sewarna menyambung lewat sisi atas, bawah, kiri, dan kanan. Sambungkan kedua dinding untuk mendapat skor dan mengisi charge. Dye akan muncul saat tiga segmen terisi.</p>
+        <p>Gunakan tombol panah dan Spasi. Tekan P atau Esc untuk jeda.</p>
+      </details>
+      <label class="motion"><input id="reduced-motion" type="checkbox"> Kurangi gerakan</label>
+    </footer>
+  </main>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

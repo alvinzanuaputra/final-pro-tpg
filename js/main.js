@@ -188,8 +188,31 @@ events.on('move', () => sfx.move());
 events.on('rotate', () => sfx.rotate());
 events.on('land', (d) => { if (!d.hard) sfx.land(); });
 events.on('hardDrop', () => sfx.hardDrop());
-events.on('tilt', (dir) => sfx.tilt(dir));
+events.on('tiltStart', (dir) => sfx.tilt(dir));
 events.on('tiltFail', () => sfx.tiltFail());
+events.on('eventWarn', () => sfx.warn());
+events.on('eventStart', (e) => {
+  if (e.type === 'quake') sfx.quake();
+  else if (e.type === 'wind') sfx.wind(e.dir);
+  else sfx.tilt(e.dir);
+});
+events.on('windPush', () => sfx.move());
+events.on('explode', () => sfx.explode());
+
+// Perkenalan material baru (sekali per perangkat).
+// Kunci = id material (lihat config.js): 1 batu, 2 mesiu.
+const MATERIAL_INTRO = {
+  2: ['MATERIAL BARU: MESIU', 'MELEDAK SAAT KENA CLEAR'],
+  1: ['MATERIAL BARU: BATU', 'BERAT, TIDAK LONGSOR'],
+};
+events.on('spawn', (p) => {
+  const intro = MATERIAL_INTRO[p.mat];
+  if (!intro) return;
+  const seen = store.get('seenMats', []);
+  if (seen.includes(p.mat)) return;
+  store.set('seenMats', [...seen, p.mat]);
+  renderer.showToast(intro[0], intro[1]);
+});
 events.on('clear', (d) => sfx.clear(d.chain));
 events.on('levelUp', () => sfx.levelUp());
 events.on('quake', () => sfx.quake());
@@ -348,10 +371,13 @@ window.render_game_to_text = () => {
     note: 'grid 80x160 butir, origin kiri-atas, y ke bawah; heights = tinggi pasir per kolom blok',
     screen: ui.screen, state: g.state, score: g.score, level: g.level, chain: g.chain,
     clears: g.clears, colors: g.numColors, grains: g.sand.count(), danger: +g.danger.toFixed(2),
-    tilt: { charges: g.tilt.charges, active: g.tilt.t > 0, dir: g.tilt.dir },
+    tilt: { meter: +g.tilt.meter.toFixed(2), active: g.tilt.active, dir: g.tilt.dir, effective: g.effectiveTilt() },
+    event: g.event ? { type: g.event.type, dir: g.event.dir, phase: g.event.phase, t: +g.event.t.toFixed(2) } : null,
+    nextEventIn: g.event ? null : +g.eventTimer.toFixed(1),
     piece: p ? { type: p.type, color: p.color, x: p.x, y: p.y, rot: p.rot } : null,
     next: g.next, heights, clearing: !!g.clearing,
+    materials: { stone: g.sand.countMat(1), gunpowder: g.sand.countMat(2), explosions: g.explosions },
   });
 };
 
-window.sandtilt = { game, ui, events, startGame };
+window.sandtilt = { game, ui, events, input, startGame };

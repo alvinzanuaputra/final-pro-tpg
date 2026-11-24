@@ -16,7 +16,7 @@ const PREVENT = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Spa
 export class Input {
   constructor(onUiKey) {
     this.onUiKey = onUiKey;
-    this.held = { left: false, right: false, soft: false };
+    this.held = { left: false, right: false, soft: false, tiltL: false, tiltR: false };
     this.queue = [];
     this.repeat = { left: 0, right: 0 };
     this.enabled = false;   // aksi gameplay hanya dikumpulkan saat bermain
@@ -39,7 +39,7 @@ export class Input {
   press(a) {
     if (a in this.held) this.held[a] = true;
     if (!this.enabled) return;
-    if (a === 'soft') return;
+    if (a === 'soft' || a === 'tiltL' || a === 'tiltR') return; // aksi tahan, dibaca lewat poll()
     this.queue.push(a);
     if (REPEAT.has(a)) this.repeat[a] = -CFG.DAS;
   }
@@ -73,7 +73,8 @@ export class Input {
         while (this.repeat[a] >= CFG.ARR) { this.repeat[a] -= CFG.ARR; actions.push(a); }
       }
     }
-    return { actions, soft: this.enabled && this.held.soft };
+    const tilt = this.enabled ? (this.held.tiltR ? 1 : 0) - (this.held.tiltL ? 1 : 0) : 0;
+    return { actions, soft: this.enabled && this.held.soft, tilt };
   }
 
   clear() { this.queue = []; }

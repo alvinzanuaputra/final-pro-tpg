@@ -77,5 +77,12 @@ export const sfx = {
   achievement() { [12, 16, 19, 24].forEach((n, k) => tone(392 * semi(n), 0.14, { vol: 0.09, type: 'sine', delay: k * 0.06 })); },
   heartbeat() { tone(70, 0.1, { type: 'sine', vol: 0.3, slide: -0.4 }); tone(62, 0.1, { type: 'sine', vol: 0.22, slide: -0.4, delay: 0.16 }); },
   gameOver() { [0, -3, -6, -12].forEach((n, k) => tone(330 * semi(n), 0.28, { vol: 0.13, type: 'square', delay: k * 0.16 })); },
+  explode() {
+    noise(0.7, { vol: 0.5, freq: 900, sweep: -3 });
+    tone(90, 0.5, { type: 'sine', vol: 0.4, slide: -1.5 });
+    tone(55, 0.6, { type: 'triangle', vol: 0.25, slide: -1, delay: 0.05 });
+  },
+  warn() { [0, 0.18, 0.36].forEach((d) => tone(880, 0.09, { vol: 0.1, type: 'square', delay: d })); },
+  wind(dir) { noise(2.5, { vol: 0.14, freq: dir > 0 ? 400 : 600, type: 'bandpass', q: 0.7, sweep: 0.8 }); },
   quake() { noise(0.8, { vol: 0.35, freq: 200, sweep: -1 }); tone(50, 0.7, { type: 'sine', vol: 0.3, slide: -0.5 }); },
 };

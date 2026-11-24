@@ -26,7 +26,7 @@ URL berguna untuk tes:
 | Putar | ↑ / X / W (Z berlawanan) | PUTAR |
 | Soft drop | ↓ / S | ▼ |
 | Hard drop | Spasi | JATUH |
-| Miring kiri/kanan | Q / E | MIRING KIRI / KANAN |
+| Miring kiri/kanan (tahan) | Q / E | MIRING KIRI / KANAN |
 | Jeda | P / Esc | II |
 | Suara / layar penuh | M / F | — |
 

@@ -13,7 +13,7 @@
 | **Pitch** | Tetris yang hancur jadi pasir. Miringkan papan untuk mengalirkan pasir, sambungkan satu warna dari dinding kiri ke kanan, lalu picu reaksi berantai. |
 | **Genre** | Puzzle / arcade, endless |
 | **Game acuan** | Tetris klasik + simulasi *falling sand* (cellular automata) |
-| **Peningkatan utama** | (1) **Kaskade berantai**, (2) **Tilt** (memiringkan papan), (3) **Achievement & easter egg**, (4) **Leaderboard online mingguan & all-time** |
+| **Peningkatan utama** | (1) **Kaskade berantai**, (2) **Tilt** (memiringkan papan), (3) **Material Mesiu & Batu**, (4) **Event pengganggu**, (5) **Achievement & easter egg**, (6) **Leaderboard online mingguan & all-time** |
 | **Platform** | Web (HTML5 Canvas), di-upload ke gameedukasi.com (file web + API PHP + database MySQL) |
 | **Kontrol** | Keyboard (utama) + layar sentuh (tombol on-screen) |
 | **Durasi sesi** | 3–8 menit per run |
@@ -54,17 +54,41 @@ Lihat NEXT piece → geser/putar → piece mendarat → hancur jadi pasir
 - Saat chain berlangsung, piece berikutnya **ditahan** sampai pasir diam.
 
 ### 3.4 Tilt (Memiringkan Papan)
-- Tombol **Q** (kiri) / **E** (kanan). Selama **0,4 detik**, gravitasi pasir condong ke sisi itu dan butir lebih memilih bergerak diagonal ke arah tersebut.
-- Jatah **3 charge**, isi ulang **1 charge per 4 detik**. Ditampilkan sebagai 3 ikon di HUD.
+- **Tahan** **Q** (kiri) / **E** (kanan). Selama ditahan, gravitasi pasir condong ke sisi itu: butir meluncur diagonal dan ke samping.
+- Dibatasi **meter miring**: penuh = 2 detik miring. Meter terisi lagi (penuh dalam 4 detik) mulai 0,4 detik setelah tombol dilepas. Minimal 10% untuk mulai miring.
+- Kegunaan: mendorong warna sampai menyentuh dinding (syarat jembatan), meratakan gundukan yang mendekati garis bahaya, memancing kaskade, dan **melawan event Miring Paksa**.
 - Tilt **tidak** menggeser piece yang sedang jatuh, hanya pasir.
-- Visual: canvas papan berotasi ±3° dengan *easing*.
+- Visual: papan berotasi ±3° dengan *easing*; meter di panel berkedip saat aktif.
 
-### 3.5 Kalah
+### 3.5 Material Khusus
+Setiap piece punya **warna** (3–5 warna aktif) **dan material**. Material khusus muncul sesekali (tidak pernah dua kali berturut-turut). Teksturnya sudah terlihat di **preview NEXT** (plus label "BATU"/"MESIU") supaya pemain bisa bersiap. Saat pertama kali muncul di sebuah perangkat, toast memperkenalkan material itu.
+
+| Material | Mulai muncul | Peluang | Tampilan | Perilaku |
+|---|---|---|---|---|
+| **Pasir** | — | sisanya | Butiran warna | Longsor diagonal, ikut tilt, gempa, dan papan miring. |
+| **Mesiu** | Level 2 | ±9% piece | Warna sangat gelap + bintik api oranye | Longsor seperti pasir dan **ikut jembatan warnanya**. Kalau **ikut di-clear atau bersentuhan dengan butir yang di-clear**, mesiu menyala, api merambat ke seluruh mesiu yang tersambung (warna apa pun), lalu **meledak**: semua butir dalam radius 7 butir ikut hancur, termasuk batu. |
+| **Batu** | Level 3 | ±7% piece | Blok warna gelap padat: tepi atas terang, tepi bawah gelap, retakan | **Tidak longsor**: hanya jatuh **lurus ke bawah** per kolom, jadi blok batu ikut "duduk" mengikuti kemiringan tanah. Tidak terdorong tilt, gempa, atau papan miring. **Ikut jembatan warnanya** (batu merah menyambung jembatan merah). Selain lewat jembatan, hanya hancur oleh ledakan mesiu. |
+
+- Butir yang ikut hancur karena ledakan dihitung ke skor clear dengan multiplier yang sama.
+- Efek: layar bergetar kuat, kilat, percikan api oranye, teks "LEDAKAN!" / "BATU HANCUR!", dan bunyi ledakan.
+- Prestasi baru: **BOOM!** (ledakan pertama) dan **PENGHANCUR BATU** (batu hancur oleh ledakan).
+
+### 3.6 Event Pengganggu
+- Event pertama muncul 35–50 detik setelah mulai, berikutnya tiap 45–75 detik (jeda makin pendek 5% per level, minimal setengahnya).
+- Selalu ada **peringatan 3 detik** (banner + bunyi bip) sebelum event aktif.
+
+| Event | Durasi | Efek | Cara menanggapi |
+|---|---|---|---|
+| **Gempa** | 1,6 dtk | Butir di permukaan bergoyang ke samping (gundukan merata) **dan butir di dalam tumpukan saling bertukar posisi** (radius 2), sehingga warna di tengah teracak. Batu tidak ikut. Layar bergetar | Sambungan bisa putus atau malah terbentuk jembatan baru: kadang merusak, kadang memberi clear gratis |
+| **Angin** ◀/▶ | 5 dtk | Piece yang jatuh terdorong 1 blok tiap 0,45 detik | Koreksi posisi dengan geser |
+| **Papan Miring** ◀/▶ | 5 dtk | Pasir dipaksa meluncur ke satu sisi (papan miring 4°) | Tahan tilt ke arah **berlawanan** untuk menahan (saling meniadakan, menghabiskan meter) |
+
+### 3.7 Kalah
 - Ada **garis bahaya** di atas papan (2 blok dari atas).
 - Kalah kalau ada pasir di atas garis itu selama lebih dari **1,5 detik** berturut-turut, atau kalau piece baru tidak bisa muncul.
 - Selama pasir di atas garis: border berdenyut merah dan terdengar bunyi detak.
 
-### 3.6 Menang
+### 3.8 Menang
 - Tidak ada kondisi menang (Endless). Tujuannya adalah high score, chain terbaik, dan membuka achievement.
 
 ---
@@ -86,8 +110,8 @@ M_multi = 1 + 0,5 × (jumlah jembatan bersamaan − 1)
 | Level | Interval jatuh piece | Jumlah warna |
 |---|---|---|
 | 1 | 800 ms | 3 |
-| 4 | ~491 ms | **4** |
-| 8 | ~256 ms | **5** |
+| 3 | ~578 ms | **4** |
+| 6 | ~355 ms | **5** |
 | 10+ | ~185 ms (min 80 ms) | 5 |
 
 - Interval = `max(80, 800 × 0,85^(level−1))` ms.
@@ -204,7 +228,7 @@ CREATE TABLE IF NOT EXISTS `<NRP>_sandtilt_leaderboard` (
 | Putar | ↑ / X (searah jarum jam), Z (berlawanan) | Tombol ⟳ |
 | Soft drop | ↓ / S | Tombol ▼ (tahan) |
 | Hard drop | Spasi | Tombol ⤓ |
-| Tilt kiri/kanan | Q / E | Tombol ⤺ ⤻ |
+| Tilt kiri/kanan | **Tahan** Q / E | Tahan tombol MIRING KIRI / KANAN |
 | Pause | P / Esc | Tombol ❚❚ |
 | Fullscreen | F | — |
 
@@ -231,9 +255,8 @@ CREATE TABLE IF NOT EXISTS `<NRP>_sandtilt_leaderboard` (
 - *(Nice-to-have)* Palet ramah buta warna + pola titik berbeda per warna.
 
 ### 8.3 Teks
-- Font pixel kecil (tinggi ±5–7 px). Pilihan:
-  - Font pixel gratis dengan lisensi bebas (cek lisensi sebelum dipakai), disimpan lokal di folder game
-  - Atau bitmap font buatan sendiri (array glyph A–Z, 0–9) supaya tanpa file tambahan
+- Bitmap font 5×7 buatan sendiri (tanpa file font eksternal), digambar **langsung di resolusi layar**, bukan di kanvas kecil. Satu titik glyph ≈ setengah piksel papan, jadi teks lebih kecil dan mudah dibaca tapi tetap bergaya pixel.
+- Logo memakai font kotak 3×5 yang besar.
 - Angka skor bergerak naik (*count-up*) saat bertambah.
 
 ### 8.4 Layar
@@ -251,7 +274,7 @@ CREATE TABLE IF NOT EXISTS `<NRP>_sandtilt_leaderboard` (
 
 Urutan pengerjaan berdasarkan dampak dibanding usaha:
 
-1. Jalur jembatan berkedip putih, butir larut jadi partikel
+1. Kilatan putih merambat dari kiri ke kanan sepanjang jembatan, berkedip, lalu butir larut jadi partikel
 2. Hitstop 60–120 ms saat clear (makin lama di chain tinggi)
 3. SFX sintesis (ZzFX): "kresek" saat mendarat, denting saat clear dengan nada naik per chain, "whoosh" saat tilt
 4. Screen shake sebanding jumlah butir (maks 6 px)

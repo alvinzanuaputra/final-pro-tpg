@@ -8,9 +8,11 @@ export const ACHIEVEMENTS = [
   { id: 'tilt_master', name: 'AHLI MIRING', desc: 'CLEAR < 1 DETIK SETELAH MIRING' },
   { id: 'close_call', name: 'NYARIS!', desc: 'CLEAR SAAT PASIR LEWAT GARIS BAHAYA' },
   { id: 'clean_board', name: 'PAPAN BERSIH', desc: 'KOSONGKAN PAPAN SETELAH CLEAR' },
+  { id: 'boom', name: 'BOOM!', desc: 'LEDAKKAN MESIU PERTAMA KALI' },
+  { id: 'stone_breaker', name: 'PENGHANCUR BATU', desc: 'HANCURKAN BATU DENGAN LEDAKAN' },
   { id: 'no_tilt', name: 'TANGAN KOSONG', desc: 'LEVEL 5 TANPA MIRING' },
   { id: 'marathon', name: 'MARATON', desc: 'CAPAI LEVEL 10' },
-  { id: 'quake', name: 'GEMPA', desc: 'MIRING KIRI-KANAN 6X DALAM 2 DETIK', hidden: true },
+  { id: 'quake', name: 'GOYANG DUMANG!', desc: 'MIRING KIRI-KANAN 6X DALAM 2 DETIK', hidden: true },
   { id: 'secret_code', name: 'KODE RAHASIA', desc: 'KETIK KATA RAHASIA DI MENU', hidden: true },
 ];
 
@@ -45,6 +47,10 @@ export class Achievements {
       if (d.inDanger) this.unlock('close_call');
     });
     ev.on('boardClear', () => this.unlock('clean_board'));
+    ev.on('explode', (d) => {
+      this.unlock('boom');
+      if (d.stones > 0) this.unlock('stone_breaker');
+    });
     ev.on('levelUp', (d) => {
       if (d.level >= 5 && d.tiltsUsed === 0) this.unlock('no_tilt');
       if (d.level >= 10) this.unlock('marathon');

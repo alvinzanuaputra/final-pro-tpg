@@ -1,8 +1,9 @@
-import { W, H, BLOCK, CFG } from './config.js';
+import { W, H, BLOCK, CFG, MAT_STONE, MAT_GUN } from './config.js';
 import { SHAPES } from './pieces.js';
-import { drawText, textWidth } from './font.js';
+import { drawText, textWidthPx, drawBlockText, blockTextWidth } from './font.js';
 
-// Seluruh game digambar di kanvas kecil 160x176 lalu diperbesar dengan skala bulat → tampilan pixel art.
+// Gambar pixel art (papan, pasir, kotak UI) di kanvas kecil 160x176 lalu diperbesar dengan skala bulat.
+// Teks digambar terpisah langsung di resolusi layar dengan font 5x7 → lebih kecil & mudah dibaca.
 export const LW = 160, LH = 176;
 const BX = 6, BY = 10;   // posisi papan
 const PX = 94;           // posisi panel samping
@@ -12,15 +13,18 @@ export const PALETTES = {
     bg: '#14121f', boardA: '#1b192b', boardB: '#1f1c31', frame: '#4a4470', text: '#ece8f5',
     dim: '#8a84a8', accent: '#f2c14e', danger: '#ff4d5e', shadow: '#0b0a12',
     sand: ['#e8505b', '#f2c14e', '#3fbf8f', '#4c8bf5', '#b45ce0'],
+    speck: '#ffb04a',                                    // bintik mesiu
   },
   retro: {
     bg: '#0d170d', boardA: '#132213', boardB: '#162716', frame: '#3f6f3f', text: '#c8f5b0',
     dim: '#5f9a5a', accent: '#e8ff9a', danger: '#f0ff70', shadow: '#081008',
     sand: ['#f0ffd8', '#a9e47c', '#6fbd4f', '#3f8a32', '#d2d36a'],
+    speck: '#ffff9a',
   },
 };
 
 const SHADES = [1.12, 1.0, 0.91, 0.82];
+const EVENT_NAMES = { quake: 'GEMPA', wind: 'ANGIN', force: 'PAPAN MIRING' };
 
 function hexToRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -50,6 +54,11 @@ export class Renderer {
     this.pix = new Uint32Array(this.img.data.buffer);
 
     this.scale = 1;
+    this.k = 1;          // piksel layar per piksel logis
+    this.tp = 1;         // ukuran titik glyph teks dalam piksel layar
+    this.texts = [];
+    this.ox = 0; this.oy = 0;
+
     this.time = 0;
     this.angle = 0;
     this.shake = 0;
@@ -57,6 +66,7 @@ export class Renderer {
     this.particles = [];
     this.floats = [];
     this.rain = [];
+    this.streaks = [];
     this.buttons = [];
     this.toast = null;
     this.setPalette('default');
@@ -68,7 +78,9 @@ export class Renderer {
     const P = this.pal = PALETTES[this.paletteName];
     this.sandPix = new Uint32Array(6 * 4);
     this.sandCss = [];
-    this.piecePix = [];
+    // tex[c]: warna siap pakai per material, masing-masing { p: packed untuk ImageData, s: string CSS }
+    this.tex = [];
+    const mk = (rgb) => ({ p: pack(rgb), s: css(rgb) });
     for (let c = 1; c <= 5; c++) {
       const base = hexToRgb(P.sand[c - 1]);
       this.sandCss[c] = [];
@@ -77,11 +89,16 @@ export class Renderer {
         this.sandPix[c * 4 + s] = pack(rgb);
         this.sandCss[c][s] = css(rgb);
       }
-      this.piecePix[c] = {
-        base: pack(base), light: pack(scaleRgb(base, 1.35)), dark: pack(scaleRgb(base, 0.62)),
-        ghost: pack(scaleRgb(base, 0.42)),
+      const sc = (f) => mk(scaleRgb(base, f));
+      this.tex[c] = {
+        piece: { base: mk(base), light: sc(1.35), dark: sc(0.62), ghost: sc(0.42) },
+        // batu: warna lebih gelap & padat, dengan retakan
+        stone: { light: sc(1.0), base: sc(0.72), base2: sc(0.62), dark: sc(0.38), crack: sc(0.5) },
+        // mesiu: warna sangat gelap dengan bintik api
+        gun: [sc(0.52), sc(0.45), sc(0.38)],
       };
     }
+    this.speck = mk(hexToRgb(P.speck));
     this.bgA = pack(hexToRgb(P.boardA));
     this.bgB = pack(hexToRgb(P.boardB));
     this.white = pack([255, 255, 255]);
@@ -92,17 +109,30 @@ export class Renderer {
     ev.on('clear', (d) => {
       this.flash = 0.12 + 0.03 * Math.min(d.chain, 5);
       this.shake = Math.max(this.shake, Math.min(6, 1.5 + d.grains / 250 + d.chain * 0.5));
-      let sx = 0, sy = 0;
-      for (let k = 0; k < d.cells.length; k += 7) { sx += d.cells[k] % W; sy += (d.cells[k] / W) | 0; }
-      const n = Math.ceil(d.cells.length / 7);
+      let sx = 0, sy = 0, n = 0;
+      for (let k = 0; k < d.cells.length; k += 7) { sx += d.cells[k] % W; sy += (d.cells[k] / W) | 0; n++; }
       const cx = BX + sx / n, cy = BY + sy / n;
       this.addFloat(`+${d.points}`, cx, cy, this.pal.text);
-      if (d.chain > 1) this.addFloat(`CHAIN X${d.chain}!`, cx, cy + 8, this.pal.accent);
+      if (d.chain > 1) this.addFloat(`CHAIN X${d.chain}!`, cx, cy + 7, this.pal.accent);
     });
     ev.on('cleared', (d) => this.burst(d.cells, d.colors));
-    ev.on('levelUp', (d) => this.addFloat(`LEVEL ${d.level}!`, BX + W / 2, BY + 40, this.pal.accent, 1.6));
+    ev.on('levelUp', (d) => this.addFloat(`LEVEL ${d.level}!`, BX + W / 2, BY + 50, this.pal.accent, 1.6));
     ev.on('gameOver', () => { this.shake = 6; });
     ev.on('quake', () => { this.shake = 10; });
+    ev.on('eventStart', (e) => { if (e.type === 'quake') this.shake = 6; });
+    ev.on('explode', (d) => {
+      this.shake = Math.max(this.shake, 8);
+      this.flash = 0.3;
+      for (const [x, y] of d.centers) {
+        for (let n = 0; n < 24; n++) {
+          const a = Math.random() * Math.PI * 2, v = 30 + Math.random() * 70, life = 0.3 + Math.random() * 0.4;
+          this.particles.push({ x: BX + x, y: BY + y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, g: 40,
+            life, max: life, color: Math.random() < 0.5 ? '#ffb347' : '#ff5a36', white: true });
+        }
+      }
+      const [cx, cy] = d.centers[0] || [W / 2, H / 2];
+      this.addFloat(d.stones > 0 ? 'BATU HANCUR!' : 'LEDAKAN!', BX + cx, BY + cy - 10, '#ffb347', 1.2);
+    });
   }
 
   // ---------- efek ----------
@@ -130,11 +160,28 @@ export class Renderer {
     if (this.particles.length > 900) this.particles.splice(0, this.particles.length - 900);
   }
 
-  addFloat(text, x, y, color, life = 1) {
-    this.floats.push({ text, x, y, color, t: 0, life });
-  }
+  addFloat(text, x, y, color, life = 1) { this.floats.push({ text, x, y, color, t: 0, life }); }
 
   showToast(title, name) { this.toast = { title, name, t: 0 }; }
+
+  // Tekstur satu titik di dalam blok n×n (dipakai piece jatuh, preview NEXT).
+  texel(mat, c, lx, ly, n, salt = 0) {
+    const T = this.tex[c], e = n - 1;
+    if (mat === MAT_STONE) {
+      if (lx === 0 || ly === 0) return T.stone.light;
+      if (lx === e || ly === e) return T.stone.dark;
+      if (n > 5 && (lx === 1 || ly === 1 || lx === e - 1 || ly === e - 1)) return T.stone.base2;
+      return (lx + ly * 3 + salt) % 5 === 0 ? T.stone.crack : T.stone.base;
+    }
+    if (mat === MAT_GUN) {
+      if (lx === 0 || ly === 0) return T.piece.base;
+      if (lx === e || ly === e) return T.piece.dark;
+      return (lx * 3 + ly * 5 + salt) % (n > 5 ? 7 : 4) === 0 ? this.speck : T.gun[(lx + ly) % 3];
+    }
+    if (lx === 0 || ly === 0) return T.piece.light;
+    if (lx === e || ly === e) return T.piece.dark;
+    return T.piece.base;
+  }
 
   // ---------- ukuran ----------
   resize(availW, availH) {
@@ -146,6 +193,8 @@ export class Renderer {
     this.canvas.width = Math.round(cw * dpr);
     this.canvas.height = Math.round(ch * dpr);
     this.ctx.imageSmoothingEnabled = false;
+    this.k = this.canvas.width / LW;
+    this.tp = Math.max(1, Math.round(this.k / 2));
   }
 
   hit(lx, ly) {
@@ -156,19 +205,30 @@ export class Renderer {
     return null;
   }
 
+  // ---------- teks (dikumpulkan dulu, digambar terakhir di resolusi layar) ----------
+  txt(str, x, y, color, size = 1, align = 'left', shadow = true) {
+    this.texts.push({ str: String(str), x: x + this.ox, y: y + this.oy, color, px: this.tp * size, align, alpha: 1, shadow });
+  }
+  tw(str, size = 1) { return textWidthPx(String(str).toUpperCase(), this.tp * size) / this.k; }
+  th(size = 1) { return (7 * this.tp * size) / this.k; }
+
   // ---------- gambar ----------
   draw(dt, ui) {
     this.time += dt;
     const g = ui.game;
     const ctx = this.lctx, P = this.pal;
     this.buttons = [];
+    this.texts = [];
 
-    // update efek
-    const targetAngle = g.tilt.t > 0 && ui.screen === 'play' ? g.tilt.dir * 3 * Math.PI / 180 : 0;
+    const playing = ui.screen === 'play' || ui.screen === 'pause';
+    const eff = playing && g.state === 'play' ? g.effectiveTilt() : 0;
+    const forced = g.event && g.event.phase === 'active' && g.event.type === 'force';
+    const targetAngle = eff * (forced ? 4 : 3) * Math.PI / 180;
     this.angle += (targetAngle - this.angle) * Math.min(1, dt * 18);
+    if (playing && g.event && g.event.phase === 'active' && g.event.type === 'quake') this.shake = Math.max(this.shake, 2.5);
     this.shake = Math.max(0, this.shake - dt * 20);
     this.flash = Math.max(0, this.flash - dt);
-    this.updateParticles(dt);
+    this.updateParticles(dt, g, playing);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = P.bg;
@@ -177,31 +237,28 @@ export class Renderer {
     const sx = this.shake > 0.3 ? Math.round((Math.random() - 0.5) * this.shake) : 0;
     const sy = this.shake > 0.3 ? Math.round((Math.random() - 0.5) * this.shake) : 0;
     ctx.translate(sx, sy);
+    this.ox = sx; this.oy = sy;
 
-    if (ui.screen === 'title' || ui.screen === 'ach' || (ui.screen === 'board' && !ui.fromOver)) {
+    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'start' || (ui.screen === 'board' && !ui.fromOver)) {
       this.drawRain(ctx, dt);
     } else {
       this.drawBoard(ctx, g);
       this.drawPanel(ctx, g, ui);
+      this.drawEventBanner(ctx, g, ui);
     }
 
-    // partikel & teks melayang
     for (const p of this.particles) {
       ctx.fillStyle = p.white && p.life > p.max * 0.75 ? '#ffffff' : p.color;
-      ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), p.w || 1, 1);
     }
-    for (const f of this.floats) {
-      const y = Math.round(f.y - f.t * 12);
-      drawText(ctx, f.text, Math.round(f.x) + 1, y + 1, P.shadow, 1, 'center');
-      drawText(ctx, f.text, Math.round(f.x), y, f.color, 1, 'center');
-    }
+    for (const f of this.floats) this.txt(f.text, f.x, f.y - f.t * 12, f.color, 1, 'center');
     if (this.flash > 0) {
       ctx.fillStyle = `rgba(255,255,255,${Math.min(0.35, this.flash * 1.5)})`;
       ctx.fillRect(BX, BY, W, H);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ox = 0; this.oy = 0;
 
-    // layar menu
     switch (ui.screen) {
       case 'title': this.drawTitle(ctx, ui); break;
       case 'pause': this.drawPause(ctx, ui); break;
@@ -211,15 +268,25 @@ export class Renderer {
       case 'start': this.drawStart(ctx); break;
     }
     this.drawToast(ctx, dt);
+    this.composite();
+  }
 
-    // tampilkan ke kanvas utama dengan skala bulat
-    const out = this.ctx;
+  composite() {
+    const out = this.ctx, k = this.k;
     out.setTransform(1, 0, 0, 1, 0, 0);
     out.imageSmoothingEnabled = false;
     out.drawImage(this.low, 0, 0, this.canvas.width, this.canvas.height);
+    const shadow = this.pal.shadow;
+    for (const t of this.texts) {
+      if (t.alpha <= 0.02) continue;
+      out.globalAlpha = t.alpha;
+      if (t.shadow) drawText(out, t.str, t.x * k + t.px, t.y * k + t.px, shadow, t.px, t.align);
+      drawText(out, t.str, t.x * k, t.y * k, t.color, t.px, t.align);
+    }
+    out.globalAlpha = 1;
   }
 
-  updateParticles(dt) {
+  updateParticles(dt, g, playing) {
     const ps = this.particles;
     for (let k = ps.length - 1; k >= 0; k--) {
       const p = ps[k];
@@ -232,29 +299,55 @@ export class Renderer {
       f.t += dt;
       if (f.t >= f.life) this.floats.splice(k, 1);
     }
+    // garis angin
+    const e = g.event;
+    if (playing && e && e.phase === 'active' && e.type === 'wind' && Math.random() < 0.5) {
+      const x = e.dir > 0 ? BX - 4 : BX + W + 4;
+      ps.push({ x, y: BY + Math.random() * H, vx: e.dir * (140 + Math.random() * 80), vy: 0, g: 0,
+        life: 0.6, max: 0.6, color: 'rgba(236,232,245,0.45)', w: 4 });
+    }
   }
 
   drawBoard(ctx, g) {
-    const pix = this.pix, c = g.sand.cells, s = g.sand.shade, sp = this.sandPix;
-    const bgA = this.bgA, bgB = this.bgB;
+    const pix = this.pix, c = g.sand.cells, s = g.sand.shade, m = g.sand.mat, sp = this.sandPix;
+    const bgA = this.bgA, bgB = this.bgB, speck = this.speck.p;
     for (let y = 0; y < H; y++) {
       const row = y * W, by = y >> 3;
       for (let x = 0; x < W; x++) {
         const i = row + x, v = c[i];
-        pix[i] = v !== 0 ? sp[v * 4 + s[i]] : (((x >> 3) + by) & 1 ? bgB : bgA);
+        if (v === 0) { pix[i] = ((x >> 3) + by) & 1 ? bgB : bgA; continue; }
+        const mt = m[i];
+        if (mt === MAT_STONE) {
+          // batu: tepi atas terang, tepi bawah gelap, ada retakan → terlihat seperti blok padat
+          const st = this.tex[v].stone;
+          const up = y > 0 && (c[i - W] === 0 || m[i - W] !== MAT_STONE);
+          const down = y < H - 1 && (c[i + W] === 0 || m[i + W] !== MAT_STONE);
+          pix[i] = up ? st.light.p : down ? st.dark.p : (x + y * 3) % 7 === 0 ? st.crack.p : (s[i] & 1 ? st.base2.p : st.base.p);
+        } else if (mt === MAT_GUN) {
+          pix[i] = s[i] === 3 && (i & 1) ? speck : this.tex[v].gun[s[i] % 3].p;
+        } else pix[i] = sp[v * 4 + s[i]];
       }
     }
 
-    // butir yang sedang di-clear berkedip putih
-    if (g.clearing && Math.floor(this.time * 18) % 2 === 0) {
-      const cells = g.clearing.cells;
-      for (let k = 0; k < cells.length; k++) pix[cells[k]] = this.white;
+    // Kilatan clear: merambat dari kiri ke kanan, lalu berkedip sebelum meledak.
+    if (g.clearing) {
+      const cl = g.clearing;
+      const prog = 1 - cl.t / cl.t0;
+      const front = (prog / 0.6) * (W + 6);
+      const blinkOn = Math.floor(this.time * 20) % 2 === 0;
+      const cells = cl.cells;
+      for (let k = 0; k < cells.length; k++) {
+        const i = cells[k], x = i % W;
+        if (prog >= 0.6) { if (blinkOn) pix[i] = this.white; }
+        else if (x < front - 6) pix[i] = this.white;
+        else if (x < front) pix[i] = this.sandPix[c[i] * 4] | 0; // ujung kilatan: warna paling terang
+      }
     }
 
     // ghost + piece aktif
     const p = g.piece;
     if (p && g.state === 'play') {
-      const pp = this.piecePix[p.color];
+      const ghost = this.tex[p.color].piece.ghost.p;
       const blocks = SHAPES[p.type].rots[p.rot];
       const gy = g.dropY(p);
       if (gy > p.y + BLOCK) {
@@ -266,7 +359,7 @@ export class Renderer {
             for (let lx = 0; lx < BLOCK; lx++) {
               if (lx !== 0 && ly !== 0 && lx !== BLOCK - 1 && ly !== BLOCK - 1) continue;
               const i = yy * W + cx + lx;
-              if (c[i] === 0) pix[i] = pp.ghost;
+              if (c[i] === 0) pix[i] = ghost;
             }
           }
         }
@@ -277,17 +370,14 @@ export class Renderer {
           const yy = cy + ly;
           if (yy < 0 || yy >= H) continue;
           for (let lx = 0; lx < BLOCK; lx++) {
-            let col = pp.base;
-            if (lx === 0 || ly === 0) col = pp.light;
-            else if (lx === BLOCK - 1 || ly === BLOCK - 1) col = pp.dark;
-            pix[yy * W + cx + lx] = col;
+            pix[yy * W + cx + lx] = this.texel(p.mat, p.color, lx, ly, BLOCK, bx + bby).p;
           }
         }
       }
     }
     this.bctx.putImageData(this.img, 0, 0);
 
-    // bingkai + papan, ikut miring saat tilt
+    // bingkai + papan, ikut miring
     const P = this.pal;
     ctx.save();
     const cx = BX + W / 2, cy = BY + H / 2;
@@ -300,8 +390,6 @@ export class Renderer {
     ctx.fillStyle = P.shadow;
     ctx.fillRect(BX - 1, BY - 1, W + 2, H + 2);
     ctx.drawImage(this.boardCanvas, BX, BY);
-
-    // garis bahaya (putus-putus)
     ctx.fillStyle = g.danger > 0 ? P.danger : 'rgba(255,77,94,0.35)';
     for (let x = 0; x < W; x += 4) ctx.fillRect(BX + x, BY + CFG.DANGER_Y, 2, 1);
     ctx.restore();
@@ -310,59 +398,86 @@ export class Renderer {
   drawPanel(ctx, g, ui) {
     const P = this.pal;
     let y = 10;
-    const label = (t) => { drawText(ctx, t, PX, y, P.dim); y += 7; };
-    const value = (t, col = P.text) => { drawText(ctx, t, PX, y, col); y += 10; };
+    const label = (t) => { this.txt(t, PX, y, P.dim); y += 7; };
+    const value = (t, col = P.text) => { this.txt(t, PX, y, col); y += 10; };
 
     label('NEXT');
     ctx.fillStyle = P.shadow;
     ctx.fillRect(PX, y, 26, 18);
     if (g.next) {
-      const sh = SHAPES[g.next.type];
-      const blocks = sh.rots[0];
+      const blocks = SHAPES[g.next.type].rots[0];
       let minX = 9, maxX = 0, minY = 9, maxY = 0;
       for (const [bx, by] of blocks) { minX = Math.min(minX, bx); maxX = Math.max(maxX, bx); minY = Math.min(minY, by); maxY = Math.max(maxY, by); }
-      const bw = (maxX - minX + 1) * 4, bh = (maxY - minY + 1) * 4;
-      const ox = PX + Math.floor((26 - bw) / 2), oy = y + Math.floor((18 - bh) / 2);
+      // Preview memakai tekstur material yang sama dengan piece (blok 5x5) → pemain tahu lebih dulu.
+      const n = 5;
+      const ox = PX + Math.floor((26 - (maxX - minX + 1) * n) / 2), oy = y + Math.floor((18 - (maxY - minY + 1) * n) / 2);
       for (const [bx, by] of blocks) {
-        ctx.fillStyle = this.sandCss[g.next.color][0];
-        ctx.fillRect(ox + (bx - minX) * 4, oy + (by - minY) * 4, 4, 4);
-        ctx.fillStyle = this.sandCss[g.next.color][3];
-        ctx.fillRect(ox + (bx - minX) * 4 + 3, oy + (by - minY) * 4, 1, 4);
-        ctx.fillRect(ox + (bx - minX) * 4, oy + (by - minY) * 4 + 3, 4, 1);
+        const x0 = ox + (bx - minX) * n, y0 = oy + (by - minY) * n;
+        for (let ly = 0; ly < n; ly++) {
+          for (let lx = 0; lx < n; lx++) {
+            ctx.fillStyle = this.texel(g.next.mat, g.next.color, lx, ly, n, bx + by).s;
+            ctx.fillRect(x0 + lx, y0 + ly, 1, 1);
+          }
+        }
       }
+      if (g.next.mat === MAT_STONE) this.txt('BATU', PX + 29, y + 6, P.text);
+      else if (g.next.mat === MAT_GUN) this.txt('MESIU', PX + 29, y + 6, this.speck.s);
     }
     y += 22;
 
-    label('SKOR'); value(String(g.score));
-    label('TERBAIK'); value(String(Math.max(ui.best, g.score)), P.dim);
-    label('LEVEL'); value(String(g.level) + (g.breather > 0 ? ' ~' : ''));
+    label('SKOR'); value(g.score);
+    label('TERBAIK'); value(Math.max(ui.best, g.score), P.dim);
+    label('LEVEL'); value(g.level + (g.breather > 0 ? ' ~' : ''));
     label('CHAIN'); value(g.chain > 0 ? 'X' + g.chain : '-', g.chain > 1 ? P.accent : P.text);
 
+    // meter miring
     label('MIRING');
-    for (let k = 0; k < CFG.TILT_CHARGES; k++) {
-      const on = k < g.tilt.charges;
-      ctx.fillStyle = on ? P.accent : P.shadow;
-      ctx.fillRect(PX + k * 9, y, 7, 5);
-      if (!on && k === g.tilt.charges) {
-        const w = Math.round(7 * g.tilt.recharge / CFG.TILT_RECHARGE);
-        ctx.fillStyle = P.dim;
-        ctx.fillRect(PX + k * 9, y + 4, w, 1);
-      }
-    }
-    y += 12;
+    const t = g.tilt, bw = 54;
+    ctx.fillStyle = P.shadow; ctx.fillRect(PX, y, bw, 5);
+    const low = t.meter < CFG.TILT_MIN_START && !t.active;
+    ctx.fillStyle = t.active ? (Math.floor(this.time * 12) % 2 ? '#ffffff' : P.accent) : low ? P.danger : P.accent;
+    ctx.fillRect(PX, y, Math.round(bw * t.meter), 5);
+    y += 11;
 
     // warna aktif
     for (let k = 1; k <= g.numColors; k++) {
       ctx.fillStyle = this.sandCss[k][1];
       ctx.fillRect(PX + (k - 1) * 6, y, 4, 4);
     }
-    y += 10;
 
-    if (!ui.touch) {
-      drawText(ctx, 'Q/E MIRING', PX, 150, P.dim);
-      drawText(ctx, 'P JEDA', PX, 157, P.dim);
+    if (!ui.touch && this.k >= 2) {   // di layar sangat kecil teks bantuan tidak muat
+      this.txt('TAHAN Q/E MIRING', PX, 144, P.dim);
+      this.txt('P JEDA  M SUARA', PX, 151, P.dim);
     }
-    drawText(ctx, 'SANDTILT', PX, 166, P.frame);
+    this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
+  }
+
+  // Banner peringatan & event aktif di atas papan.
+  drawEventBanner(ctx, g, ui) {
+    const e = g.event;
+    if (!e || g.state !== 'play') return;
+    const P = this.pal;
+    const arrow = e.dir > 0 ? '>>' : '<<';
+    let line1, line2 = '', col;
+    if (e.phase === 'warn') {
+      const pulse = Math.floor(this.time * 6) % 2 === 0;
+      line1 = `${EVENT_NAMES[e.type]} ${e.type === 'quake' ? '' : arrow}`.trim();
+      line2 = `DALAM ${Math.ceil(e.t)}`;
+      col = pulse ? P.accent : P.text;
+    } else {
+      line1 = e.type === 'quake' ? 'GEMPA!' : `${EVENT_NAMES[e.type]} ${arrow}`;
+      if (e.type === 'force') line2 = ui.touch ? `TAHAN MIRING ${e.dir > 0 ? 'KIRI' : 'KANAN'}` : `TAHAN ${e.dir > 0 ? 'Q' : 'E'} MELAWAN`;
+      if (e.type === 'wind') line2 = 'PIECE TERDORONG';
+      col = P.danger;
+    }
+    const y = BY + 22;
+    const w = Math.ceil(Math.max(this.tw(line1), this.tw(line2))) + 8;
+    const h = line2 ? 17 : 10;
+    const x = Math.round(BX + (W - w) / 2);
+    ctx.fillStyle = col; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = P.shadow; ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+    this.txt(line1, BX + W / 2, y + 2.5, col, 1, 'center');
+    if (line2) this.txt(line2, BX + W / 2, y + 9.5, P.text, 1, 'center');
   }
 
   // ---------- layar ----------
@@ -373,7 +488,7 @@ export class Renderer {
     ctx.fillRect(x, y, w, h);
     ctx.fillStyle = focused ? P.accent : P.shadow;
     ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
-    drawText(ctx, label, x + Math.floor(w / 2), y + Math.floor((h - 5) / 2), focused ? P.shadow : P.text, 1, 'center');
+    this.txt(label, x + w / 2, y + (h - this.th()) / 2, focused ? P.shadow : P.text, 1, 'center', !focused);
   }
 
   menu(ctx, ui, items, y, w = 84, gap = 15) {
@@ -384,6 +499,7 @@ export class Renderer {
   dim(ctx, a = 0.82) {
     ctx.fillStyle = `rgba(8,7,14,${a})`;
     ctx.fillRect(0, 0, LW, LH);
+    for (const t of this.texts) t.alpha *= 1 - a;
   }
 
   drawRain(ctx, dt) {
@@ -399,53 +515,50 @@ export class Renderer {
     }
   }
 
-  drawStart(ctx) {
-    const P = this.pal;
-    this.dim(ctx, 0.9);
-    this.drawLogo(ctx, 50);
-    if (Math.floor(this.time * 2) % 2 === 0) drawText(ctx, 'KLIK / TAP UNTUK MULAI', LW / 2, 110, P.text, 1, 'center');
-  }
-
   drawLogo(ctx, y) {
-    const word = 'SANDTILT';
-    const sc = 3;
-    let x = Math.floor((LW - textWidth(word, sc)) / 2);
+    const word = 'SANDTILT', sc = 3;
+    let x = Math.floor((LW - blockTextWidth(word, sc)) / 2);
     for (let k = 0; k < word.length; k++) {
       const bob = Math.round(Math.sin(this.time * 3 + k * 0.7) * 1.2);
-      drawText(ctx, word[k], x + 1, y + bob + 1, this.pal.shadow, sc);
-      drawText(ctx, word[k], x, y + bob, this.sandCss[(k % 5) + 1][0], sc);
+      drawBlockText(ctx, word[k], x + 1, y + bob + 1, this.pal.shadow, sc);
+      drawBlockText(ctx, word[k], x, y + bob, this.sandCss[(k % 5) + 1][0], sc);
       x += 4 * sc;
     }
   }
 
+  drawStart(ctx) {
+    this.drawLogo(ctx, 50);
+    if (Math.floor(this.time * 2) % 2 === 0) this.txt('KLIK / TAP UNTUK MULAI', LW / 2, 110, this.pal.text, 1, 'center');
+  }
+
   drawTitle(ctx, ui) {
     const P = this.pal;
-    this.drawLogo(ctx, 26);
-    drawText(ctx, 'TETRIS PASIR YANG BISA MIRING', LW / 2, 48, P.dim, 1, 'center');
-    this.menu(ctx, ui, [['play', 'MAIN'], ['board', 'PERINGKAT'], ['ach', 'PRESTASI']], 70);
-    drawText(ctx, `TERBAIK: ${ui.best}`, LW / 2, 122, P.accent, 1, 'center');
-    if (ui.playerName) drawText(ctx, `PEMAIN: ${ui.playerName}`, LW / 2, 130, P.dim, 1, 'center');
+    this.drawLogo(ctx, 24);
+    this.txt('TETRIS PASIR YANG BISA MIRING', LW / 2, 46, P.dim, 1, 'center');
+    this.menu(ctx, ui, [['play', 'MAIN'], ['board', 'PERINGKAT'], ['ach', 'PRESTASI']], 66);
+    this.txt(`TERBAIK: ${ui.best}`, LW / 2, 118, P.accent, 1, 'center');
+    if (ui.playerName) this.txt(`PEMAIN: ${ui.playerName}`, LW / 2, 126, P.dim, 1, 'center');
     if (!ui.touch) {
-      drawText(ctx, '<- -> GESER   ^ PUTAR   SPASI JATUH', LW / 2, 150, P.dim, 1, 'center');
-      drawText(ctx, 'Q / E MIRING   P JEDA   M SUARA', LW / 2, 158, P.dim, 1, 'center');
+      this.txt('<- -> GESER   ^ PUTAR   SPASI JATUH', LW / 2, 146, P.dim, 1, 'center');
+      this.txt('TAHAN Q / E MIRING   P JEDA', LW / 2, 154, P.dim, 1, 'center');
     }
-    drawText(ctx, ui.muted ? 'SUARA: MATI' : '', LW / 2, 168, P.dim, 1, 'center');
+    if (ui.muted) this.txt('SUARA: MATI (M)', LW / 2, 165, P.dim, 1, 'center');
   }
 
   drawPause(ctx, ui) {
     this.dim(ctx);
-    drawText(ctx, 'JEDA', LW / 2, 50, this.pal.text, 3, 'center');
-    this.menu(ctx, ui, [['resume', 'LANJUT'], ['restart', 'ULANG'], ['menu', 'MENU']], 80);
+    this.txt('JEDA', LW / 2, 48, this.pal.text, 2, 'center');
+    this.menu(ctx, ui, [['resume', 'LANJUT'], ['restart', 'ULANG'], ['menu', 'MENU']], 76);
   }
 
   drawOver(ctx, ui) {
     const P = this.pal, o = ui.over || {};
     this.dim(ctx, 0.86);
-    drawText(ctx, 'GAME OVER', LW / 2, 14, P.danger, 2, 'center');
+    this.txt('GAME OVER', LW / 2, 12, P.danger, 2, 'center');
     let y = 34;
     const row = (k, v, col = P.text) => {
-      drawText(ctx, k, 30, y, P.dim);
-      drawText(ctx, String(v), 130, y, col, 1, 'right');
+      this.txt(k, 24, y, P.dim);
+      this.txt(v, 136, y, col, 1, 'right');
       y += 9;
     };
     row('SKOR', o.score ?? 0, P.accent);
@@ -453,65 +566,63 @@ export class Renderer {
     row('LEVEL', o.level ?? 1);
     row('BUTIR DIHAPUS', o.grains ?? 0);
     row('DURASI', `${o.duration ?? 0} DTK`);
-    y += 4;
-    if (o.newBest) { drawText(ctx, 'REKOR PRIBADI BARU!', LW / 2, y, P.accent, 1, 'center'); y += 9; }
-    if (ui.lbStatus) { drawText(ctx, ui.lbStatus, LW / 2, y, ui.lbStatusColor || P.text, 1, 'center'); y += 9; }
-    if (o.newAch > 0) { drawText(ctx, `${o.newAch} PRESTASI BARU`, LW / 2, y, P.dim, 1, 'center'); }
+    y += 3;
+    if (o.newBest) { this.txt('REKOR PRIBADI BARU!', LW / 2, y, P.accent, 1, 'center'); y += 9; }
+    if (ui.lbStatus) { this.txt(ui.lbStatus, LW / 2, y, ui.lbStatusColor || P.text, 1, 'center'); y += 9; }
+    if (o.newAch > 0) this.txt(`${o.newAch} PRESTASI BARU`, LW / 2, y, P.dim, 1, 'center');
     this.menu(ctx, ui, [['restart', 'MAIN LAGI'], ['board', 'PERINGKAT'], ['menu', 'MENU']], 120);
   }
 
   drawLeaderboard(ctx, ui) {
     const P = this.pal, lb = ui.lb || {};
-    if (ui.fromOver) this.dim(ctx, 0.9);
-    drawText(ctx, 'PERINGKAT', LW / 2, 5, P.text, 2, 'center');
+    if (ui.fromOver) this.dim(ctx, 0.92);
+    this.txt('PERINGKAT', LW / 2, 4, P.text, 2, 'center');
     this.button(ctx, 'tabWeekly', 'MINGGU INI', 6, 20, 72, 11, lb.tab === 'weekly');
     this.button(ctx, 'tabAll', 'SEPANJANG MASA', 82, 20, 72, 11, lb.tab === 'alltime');
 
     let y = 37;
     if (lb.loading) {
-      drawText(ctx, 'MEMUAT...', LW / 2, 80, P.dim, 1, 'center');
+      this.txt('MEMUAT...', LW / 2, 80, P.dim, 1, 'center');
     } else if (!lb.rows || lb.rows.length === 0) {
-      drawText(ctx, 'BELUM ADA SKOR', LW / 2, 70, P.dim, 1, 'center');
-      drawText(ctx, 'JADILAH YANG PERTAMA!', LW / 2, 80, P.dim, 1, 'center');
+      this.txt('BELUM ADA SKOR', LW / 2, 70, P.dim, 1, 'center');
+      this.txt('JADILAH YANG PERTAMA!', LW / 2, 80, P.dim, 1, 'center');
     } else {
-      lb.rows.slice(0, 10).forEach((r, k) => {
-        const me = r.me;
-        if (me) { ctx.fillStyle = P.frame; ctx.fillRect(6, y - 2, 148, 9); }
-        const col = k === 0 ? P.accent : me ? P.text : P.text;
-        drawText(ctx, String(k + 1), 17, y, k < 3 ? P.accent : P.dim, 1, 'right');
-        drawText(ctx, (r.name || '?').slice(0, 16), 22, y, col);
-        drawText(ctx, String(r.score), 153, y, col, 1, 'right');
+      const top = lb.rows.slice(0, 10);
+      top.forEach((r, k) => {
+        if (r.me) { ctx.fillStyle = P.frame; ctx.fillRect(6, y - 2, 148, 9); }
+        this.txt(k + 1, 17, y, k < 3 ? P.accent : P.dim, 1, 'right');
+        this.txt((r.name || '?').slice(0, 16), 22, y, k === 0 ? P.accent : P.text);
+        this.txt(r.score, 153, y, k === 0 ? P.accent : P.text, 1, 'right');
         y += 10;
       });
-      if (lb.mine && !lb.rows.slice(0, 10).some((r) => r.me)) {
+      if (lb.mine && !top.some((r) => r.me)) {
         y += 2;
         ctx.fillStyle = P.frame; ctx.fillRect(6, y - 2, 148, 9);
-        drawText(ctx, `#${lb.mine.rank}`, 21, y, P.accent, 1, 'right');
-        drawText(ctx, (lb.mine.name || 'KAMU').slice(0, 16), 24, y, P.text);
-        drawText(ctx, String(lb.mine.score), 153, y, P.text, 1, 'right');
+        this.txt(`#${lb.mine.rank}`, 21, y, P.accent, 1, 'right');
+        this.txt((lb.mine.name || 'KAMU').slice(0, 16), 24, y, P.text);
+        this.txt(lb.mine.score, 153, y, P.text, 1, 'right');
       }
     }
     const info = lb.offline ? 'OFFLINE - SKOR LOKAL' : (lb.tab === 'weekly' && lb.resetIn ? `RESET DALAM ${lb.resetIn}` : '');
-    if (info) drawText(ctx, info, LW / 2, 150, lb.offline ? P.danger : P.dim, 1, 'center');
+    if (info) this.txt(info, LW / 2, 149, lb.offline ? P.danger : P.dim, 1, 'center');
     this.menu(ctx, { focus: 0 }, [['back', 'KEMBALI']], 160, 60);
   }
 
   drawAchievements(ctx, ui) {
     const P = this.pal;
     this.dim(ctx, 0.6);
-    drawText(ctx, 'PRESTASI', LW / 2, 5, P.text, 2, 'center');
+    this.txt('PRESTASI', LW / 2, 4, P.text, 2, 'center');
     const list = ui.ach || [];
-    const done = list.filter((a) => a.unlocked).length;
-    drawText(ctx, `${done}/${list.length}`, LW / 2, 19, P.dim, 1, 'center');
-    let y = 28;
+    this.txt(`${list.filter((a) => a.unlocked).length}/${list.length}`, LW / 2, 18, P.dim, 1, 'center');
+    let y = 27;
     for (const a of list) {
       const show = a.unlocked || !a.hidden;
       ctx.fillStyle = a.unlocked ? P.accent : P.shadow;
       ctx.fillRect(6, y, 7, 7);
       if (!a.unlocked) { ctx.fillStyle = P.frame; ctx.fillRect(8, y + 2, 3, 3); }
-      drawText(ctx, show ? a.name : '???', 17, y, a.unlocked ? P.text : P.dim);
-      drawText(ctx, show ? a.desc : 'RAHASIA', 17, y + 6, P.dim);
-      y += 13;
+      this.txt(show ? a.name : '???', 17, y - 0.5, a.unlocked ? P.text : P.dim);
+      this.txt(show ? a.desc : 'RAHASIA', 17, y + 4.5, P.dim);
+      y += 11;
     }
     this.menu(ctx, { focus: 0 }, [['back', 'KEMBALI']], 160, 60);
   }
@@ -524,11 +635,11 @@ export class Renderer {
     const P = this.pal;
     const slide = Math.min(1, t.t * 6, (2.6 - t.t) * 6);
     const y = Math.round(-16 + 18 * slide);
-    const w = Math.max(textWidth(t.name), textWidth(t.title)) + 10;
+    const w = Math.ceil(Math.max(this.tw(t.name), this.tw(t.title))) + 10;
     const x = Math.floor((LW - w) / 2);
-    ctx.fillStyle = P.accent; ctx.fillRect(x, y, w, 15);
-    ctx.fillStyle = P.shadow; ctx.fillRect(x + 1, y + 1, w - 2, 13);
-    drawText(ctx, t.title, LW / 2, y + 2, P.accent, 1, 'center');
-    drawText(ctx, t.name, LW / 2, y + 8, P.text, 1, 'center');
+    ctx.fillStyle = P.accent; ctx.fillRect(x, y, w, 16);
+    ctx.fillStyle = P.shadow; ctx.fillRect(x + 1, y + 1, w - 2, 14);
+    this.txt(t.title, LW / 2, y + 2, P.accent, 1, 'center');
+    this.txt(t.name, LW / 2, y + 8.5, P.text, 1, 'center');
   }
 }

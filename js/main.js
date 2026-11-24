@@ -2,13 +2,14 @@ import { Emitter, store } from './util.js';
 import { Game } from './game.js';
 import { Renderer, LW, LH } from './render.js';
 import { Input } from './input.js';
-import { sfx, unlockAudio, setMuted, isMuted } from './audio.js';
+import { sfx, unlockAudio, setSoundMode, getSoundMode, cycleSoundMode, setMusic, setDanger, setPausedMusic, audioDebug } from './audio.js';
 import { Achievements } from './achievements.js';
 import { Leaderboard, validName } from './leaderboard.js';
 
 const STEP = 1 / 60;
 const canvas = document.getElementById('screen');
-const touchEl = document.getElementById('touch');
+const consoleEl = document.getElementById('console');
+const slotEl = document.getElementById('slot');
 const nameBox = document.getElementById('namebox');
 const nameForm = document.getElementById('nameform');
 const nameInput = document.getElementById('nameinput');
@@ -19,7 +20,11 @@ const events = new Emitter();
 const game = new Game(events);
 const renderer = new Renderer(canvas, events);
 const lb = new Leaderboard();
-const ach = new Achievements(events, (def) => { renderer.showToast('PRESTASI!', def.name); sfx.achievement(); });
+const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', secret: 'TROFI RAHASIA!' };
+const ach = new Achievements(events, (def) => {
+  renderer.showToast(TIER_TITLE[def.tier] || 'PRESTASI!', def.name, def.tier);
+  sfx.achievement(def.tier);
+});
 
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
 const params = new URLSearchParams(location.search);
@@ -29,8 +34,13 @@ const ui = {
   lb: { tab: 'weekly', rows: [], loading: false }, lbStatus: '', lbStatusColor: null,
   ach: [], touch: isTouch, muted: false, playerName: lb.name, fromOver: false,
 };
-setMuted(store.get('muted', false));
-ui.muted = isMuted();
+// mode suara: all (musik + efek) | sfx (efek saja) | off
+setSoundMode(store.get('soundMode', store.get('muted', false) ? 'off' : 'all'));
+ui.soundMode = getSoundMode();
+ui.muted = ui.soundMode === 'off';
+const SOUND_LABEL = { all: 'MUSIK + EFEK', sfx: 'EFEK SAJA', off: 'MATI' };
+// musik yang diputar per layar
+const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', play: 'game', pause: 'game', over: null };
 renderer.setPalette(store.get('palette', 'default'));
 
 const MENUS = {
@@ -43,8 +53,27 @@ const MENUS = {
 
 // ---------------------------------------------------------------- input
 const input = new Input(onUiKey);
-input.bindTouch(touchEl);
-touchEl.querySelector('[data-ui="pause"]').addEventListener('pointerdown', (e) => { e.preventDefault(); pause(); });
+
+// Navigasi menu bersama untuk keyboard & tombol shell. cmd: up | down | left | right | ok | back
+function uiNav(cmd) {
+  if (ui.screen === 'pause' && cmd === 'back') { resume(); return; }
+  if (ui.screen === 'board' && (cmd === 'left' || cmd === 'right')) {
+    loadBoard(ui.lb.tab === 'weekly' ? 'alltime' : 'weekly');
+    sfx.click();
+    return;
+  }
+  const items = MENUS[ui.screen];
+  if (!items) return;
+  if (cmd === 'down') { ui.focus = (ui.focus + 1) % items.length; sfx.cursor(); }
+  else if (cmd === 'up') { ui.focus = (ui.focus + items.length - 1) % items.length; sfx.cursor(); }
+  else if (cmd === 'ok') { sfx.click(); activate(items[ui.focus]); }
+  else if (cmd === 'back') {
+    if (ui.screen === 'board' || ui.screen === 'ach') { sfx.back(); activate('back'); }
+    else if (ui.screen === 'over') { sfx.back(); activate('menu'); }
+  }
+}
+
+const KEY_NAV = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Space: 'ok', Escape: 'back' };
 
 let secret = '';
 function onUiKey(e) {
@@ -58,27 +87,54 @@ function onUiKey(e) {
     if (e.code === 'KeyP' || e.code === 'Escape') pause();
     return;
   }
-  if (ui.screen === 'pause' && (e.code === 'KeyP' || e.code === 'Escape')) { resume(); return; }
+  if (ui.screen === 'pause' && e.code === 'KeyP') { resume(); return; }
 
   if (ui.screen === 'title' && e.key && e.key.length === 1) {
     secret = (secret + e.key.toUpperCase()).slice(-5);
     if (secret === 'PASIR') { secret = ''; toggleRetro(); return; }
   }
-  if (ui.screen === 'board' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
-    loadBoard(ui.lb.tab === 'weekly' ? 'alltime' : 'weekly');
-    sfx.click();
+  const cmd = KEY_NAV[e.code];
+  if (cmd) uiNav(cmd);
+}
+
+// ------------------------------------------------------- tombol shell
+// Saat bermain: D-pad gerak (atas = jatuh), A putar, B putar balik, L/R miring, START jeda, SELECT suara.
+// Di menu: D-pad navigasi, A/START pilih, B kembali.
+const PLAY_MAP = { left: 'left', right: 'right', down: 'soft', up: 'hardDrop', a: 'rotCW', b: 'rotCCW', l: 'tiltL', r: 'tiltR' };
+const MENU_MAP = { up: 'up', down: 'down', left: 'left', right: 'right', a: 'ok', start: 'ok', b: 'back' };
+
+function shellPress(btn) {
+  unlockAudio();
+  if (navigator.vibrate) { try { navigator.vibrate(8); } catch { /* abaikan */ } }
+  if (nameBox.classList.contains('show')) return;
+  if (ui.screen === 'start') { goTitle(); sfx.click(); return; }
+  if (btn === 'select') { toggleMute(); sfx.click(); return; }
+  if (ui.screen === 'play') {
+    if (btn === 'start') { pause(); return; }
+    const a = PLAY_MAP[btn];
+    if (a) input.press(a);
     return;
   }
+  if (ui.screen === 'pause' && btn === 'start') { resume(); return; }
+  const cmd = MENU_MAP[btn];
+  if (cmd) uiNav(cmd);
+}
 
-  const items = MENUS[ui.screen];
-  if (!items) return;
-  if (e.code === 'ArrowDown') { ui.focus = (ui.focus + 1) % items.length; sfx.move(); }
-  else if (e.code === 'ArrowUp') { ui.focus = (ui.focus + items.length - 1) % items.length; sfx.move(); }
-  else if (e.code === 'Enter' || e.code === 'Space') { sfx.click(); activate(items[ui.focus]); }
-  else if (e.code === 'Escape') {
-    if (ui.screen === 'board' || ui.screen === 'ach') activate('back');
-    else if (ui.screen === 'over') activate('menu');
-  }
+function shellRelease(btn) {
+  const a = PLAY_MAP[btn];
+  if (a) input.release(a);
+}
+
+for (const el of consoleEl.querySelectorAll('[data-btn]')) {
+  const btn = el.dataset.btn;
+  let down = false;
+  const press = (e) => { e.preventDefault(); if (down) return; down = true; el.classList.add('on'); shellPress(btn); };
+  const release = (e) => { if (e) e.preventDefault(); if (!down) return; down = false; el.classList.remove('on'); shellRelease(btn); };
+  el.addEventListener('pointerdown', (e) => { try { el.setPointerCapture(e.pointerId); } catch { /* abaikan */ } press(e); });
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+  el.addEventListener('lostpointercapture', () => release());
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 canvas.addEventListener('pointerdown', (e) => {
@@ -96,8 +152,9 @@ canvas.addEventListener('pointerdown', (e) => {
 function setScreen(s) {
   ui.screen = s;
   ui.focus = 0;
-  touchEl.classList.toggle('show', isTouch && s === 'play');
-  layout();
+  if (s in SCREEN_MUSIC && !(s === 'board' && ui.fromOver)) setMusic(SCREEN_MUSIC[s]);
+  if (s !== 'play' && dangerOn) { dangerOn = false; setDanger(false); }
+  setPausedMusic(s === 'pause');
 }
 
 function goTitle() {
@@ -127,10 +184,12 @@ function pause() {
   if (ui.screen !== 'play' || game.state !== 'play') return;
   input.enabled = false;
   input.releaseAll();
+  sfx.pause();
   setScreen('pause');
 }
 
 function resume() {
+  sfx.resume();
   setScreen('play');
   enableInputNextFrame();
 }
@@ -163,9 +222,11 @@ async function loadBoard(tab) {
 }
 
 function toggleMute() {
-  setMuted(!isMuted());
-  ui.muted = isMuted();
-  store.set('muted', ui.muted);
+  ui.soundMode = cycleSoundMode();
+  ui.muted = ui.soundMode === 'off';
+  store.set('soundMode', ui.soundMode);
+  renderer.showToast('SUARA', SOUND_LABEL[ui.soundMode]);
+  sfx.toggle();
 }
 
 function toggleRetro() {
@@ -186,18 +247,24 @@ function toggleFullscreen() {
 // -------------------------------------------------------- suara & event
 events.on('move', () => sfx.move());
 events.on('rotate', () => sfx.rotate());
-events.on('land', (d) => { if (!d.hard) sfx.land(); });
-events.on('hardDrop', () => sfx.hardDrop());
+// Suara mendarat sesuai material & posisi (stereo); hard drop punya hentakan tambahan.
+events.on('land', (d) => { if (d.hard) sfx.hardDrop(d); else sfx.land(d); });
 events.on('tiltStart', (dir) => sfx.tilt(dir));
 events.on('tiltFail', () => sfx.tiltFail());
 events.on('eventWarn', () => sfx.warn());
 events.on('eventStart', (e) => {
   if (e.type === 'quake') sfx.quake();
   else if (e.type === 'wind') sfx.wind(e.dir);
-  else sfx.tilt(e.dir);
+  else sfx.force(e.dir);
 });
-events.on('windPush', () => sfx.move());
-events.on('explode', () => sfx.explode());
+events.on('windPush', (dir) => sfx.windPush(dir));
+events.on('explode', (d) => sfx.explode(d));
+const centerX = (cells) => {
+  let sx = 0, n = 0;
+  for (let k = 0; k < cells.length; k += 9) { sx += cells[k] % 80; n++; }
+  return n ? sx / n : 40;
+};
+events.on('cleared', (d) => sfx.scatter(centerX(d.cells)));
 
 // Perkenalan material baru (sekali per perangkat).
 // Kunci = id material (lihat config.js): 1 batu, 2 mesiu.
@@ -212,8 +279,9 @@ events.on('spawn', (p) => {
   if (seen.includes(p.mat)) return;
   store.set('seenMats', [...seen, p.mat]);
   renderer.showToast(intro[0], intro[1]);
+  sfx.material();
 });
-events.on('clear', (d) => sfx.clear(d.chain));
+events.on('clear', (d) => sfx.clear(d.chain, centerX(d.cells)));
 events.on('levelUp', () => sfx.levelUp());
 events.on('quake', () => sfx.quake());
 events.on('gameOver', onGameOver);
@@ -303,15 +371,29 @@ nameSkip.addEventListener('click', () => {
 });
 
 // -------------------------------------------------------------- layout
+// Pilih bentuk shell sesuai orientasi, lalu sesuaikan kanvas dengan ukuran slot layar.
+// Tombol sentuh hanya di perangkat layar sentuh (atau paksa dengan ?pad=1 / sembunyikan dengan ?pad=0).
+const showPad = params.has('pad') ? params.get('pad') !== '0' : isTouch;
+ui.touch = showPad;
+consoleEl.classList.toggle('has-pad', showPad);
+
 function layout() {
-  const touchH = touchEl.classList.contains('show') ? touchEl.offsetHeight + 8 : 0;
-  renderer.resize(window.innerWidth - 32, window.innerHeight - 16 - touchH);
+  const portrait = window.innerHeight > window.innerWidth * 1.05;
+  consoleEl.classList.toggle('portrait', portrait);
+  consoleEl.classList.toggle('landscape', !portrait);
+  // ukur setelah grid menyesuaikan
+  canvas.style.width = '0px';
+  canvas.style.height = '0px';
+  const r = slotEl.getBoundingClientRect();
+  renderer.resize(r.width - 8, r.height - 8);
 }
 window.addEventListener('resize', layout);
+window.addEventListener('orientationchange', () => setTimeout(layout, 150));
+if (window.ResizeObserver) new ResizeObserver(() => layout()).observe(document.getElementById('app'));
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 
 // ---------------------------------------------------------------- loop
-let last = performance.now(), acc = 0, heart = 0;
+let last = performance.now(), acc = 0, heart = 0, dangerOn = false;
 
 function tick() {
   game.update(STEP, input.poll(STEP));
@@ -328,6 +410,8 @@ function step(dt) {
         heart -= dt;
         if (heart <= 0) { sfx.heartbeat(); heart = 0.7; }
       } else heart = 0;
+      const danger = game.danger > 0;
+      if (danger !== dangerOn) { dangerOn = danger; setDanger(danger); }
     } else if (overTimer > 0) {
       overTimer -= dt;
       if (overTimer <= 0) {
@@ -347,6 +431,7 @@ function frame(now) {
 }
 
 layout();
+window.addEventListener('load', layout);
 lb.flushPending();
 requestAnimationFrame(frame);
 
@@ -380,4 +465,4 @@ window.render_game_to_text = () => {
   });
 };
 
-window.sandtilt = { game, ui, events, input, startGame };
+window.sandtilt = { game, ui, events, input, startGame, audio: audioDebug };

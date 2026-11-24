@@ -1,19 +1,20 @@
 import { store } from './util.js';
 
 // Deskripsi maksimal 35 karakter supaya muat di layar.
+// tier: bronze | silver | gold | secret → menentukan ikon trofi (assets/image/trophy-*.svg).
 export const ACHIEVEMENTS = [
-  { id: 'first_bridge', name: 'JEMBATAN PERTAMA', desc: 'CLEAR PERTAMA KALI' },
-  { id: 'chain3', name: 'REAKSI BERANTAI', desc: 'CAPAI CHAIN X3' },
-  { id: 'chain5', name: 'BADAI PASIR', desc: 'CAPAI CHAIN X5' },
-  { id: 'tilt_master', name: 'AHLI MIRING', desc: 'CLEAR < 1 DETIK SETELAH MIRING' },
-  { id: 'close_call', name: 'NYARIS!', desc: 'CLEAR SAAT PASIR LEWAT GARIS BAHAYA' },
-  { id: 'clean_board', name: 'PAPAN BERSIH', desc: 'KOSONGKAN PAPAN SETELAH CLEAR' },
-  { id: 'boom', name: 'BOOM!', desc: 'LEDAKKAN MESIU PERTAMA KALI' },
-  { id: 'stone_breaker', name: 'PENGHANCUR BATU', desc: 'HANCURKAN BATU DENGAN LEDAKAN' },
-  { id: 'no_tilt', name: 'TANGAN KOSONG', desc: 'LEVEL 5 TANPA MIRING' },
-  { id: 'marathon', name: 'MARATON', desc: 'CAPAI LEVEL 10' },
-  { id: 'quake', name: 'GOYANG DUMANG!', desc: 'MIRING KIRI-KANAN 6X DALAM 2 DETIK', hidden: true },
-  { id: 'secret_code', name: 'KODE RAHASIA', desc: 'KETIK KATA RAHASIA DI MENU', hidden: true },
+  { id: 'first_bridge', tier: 'bronze', name: 'JEMBATAN PERTAMA', desc: 'CLEAR PERTAMA KALI' },
+  { id: 'chain3', tier: 'silver', name: 'REAKSI BERANTAI', desc: 'CAPAI CHAIN X3' },
+  { id: 'chain5', tier: 'gold', name: 'BADAI PASIR', desc: 'CAPAI CHAIN X5' },
+  { id: 'tilt_master', tier: 'silver', name: 'AHLI MIRING', desc: 'CLEAR < 1 DETIK SETELAH MIRING' },
+  { id: 'close_call', tier: 'silver', name: 'NYARIS!', desc: 'CLEAR SAAT PASIR LEWAT GARIS BAHAYA' },
+  { id: 'clean_board', tier: 'gold', name: 'PAPAN BERSIH', desc: 'KOSONGKAN PAPAN SETELAH CLEAR' },
+  { id: 'boom', tier: 'bronze', name: 'BOOM!', desc: 'LEDAKKAN MESIU PERTAMA KALI' },
+  { id: 'stone_breaker', tier: 'silver', name: 'PENGHANCUR BATU', desc: 'HANCURKAN BATU DENGAN LEDAKAN' },
+  { id: 'no_tilt', tier: 'gold', name: 'TANGAN KOSONG', desc: 'LEVEL 5 TANPA MIRING' },
+  { id: 'marathon', tier: 'gold', name: 'MARATON', desc: 'CAPAI LEVEL 10' },
+  { id: 'quake', tier: 'secret', name: 'GOYANG DUMANG!', desc: 'MIRING KIRI-KANAN 6X DALAM 2 DETIK', hidden: true },
+  { id: 'secret_code', tier: 'secret', name: 'KODE RAHASIA', desc: 'KETIK KATA RAHASIA DI MENU', hidden: true },
 ];
 
 export class Achievements {

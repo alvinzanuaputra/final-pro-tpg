@@ -1,6 +1,39 @@
-// SFX disintesis langsung dengan WebAudio (tanpa file audio → bundle tetap kecil).
-let ctx = null, master = null, noiseBuf = null;
-let muted = false;
+// Mesin audio SandTilt: SFX & musik dari file di assets/ (WebAudio).
+// - SFX: paket Kenney (CC0) + angin/pasir buatan ffmpeg → assets/sfx/*.mp3
+// - Musik: chiptune orisinal → assets/music/{title,game}.mp3 (loop mulus, panjang loop di loops.json)
+// Suara diposisikan stereo sesuai letak kejadian di papan, musik meredup sesaat saat ledakan/clear,
+// dan musik terdengar "teredam" (low-pass) saat pasir melewati garis bahaya.
+
+const SFX_NAMES = [
+  'ui-cursor', 'ui-confirm', 'ui-back', 'ui-pause', 'ui-resume', 'ui-toggle',
+  'move', 'rotate', 'harddrop', 'tilt-fail', 'tilt-slide',
+  'land-sand-0', 'land-sand-1', 'land-sand-2', 'land-stone-0', 'land-stone-1', 'land-gun',
+  'clear', 'chain', 'explode-0', 'explode-1', 'explode-2', 'explode-low',
+  'quake-rumble', 'force-creak', 'wind', 'wind-push', 'heartbeat',
+  'jingle-level', 'jingle-gameover', 'jingle-warn', 'jingle-material',
+  'trophy-bronze', 'trophy-silver', 'trophy-gold', 'trophy-secret',
+];
+const MUSIC_VOL = 0.42;
+
+let ctx = null, master = null, sfxBus = null, musicBus = null, musicFilter = null;
+const buffers = {};
+let loops = { game: 0, title: 0 };
+let loading = null;
+let musicSrc = null, musicName = null, musicWanted = null;
+let mode = 'all';                 // 'all' | 'sfx' (musik mati) | 'off'
+let duckUntil = 0;
+
+function load() {
+  if (loading) return loading;
+  const get = async (url) => ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+  loading = Promise.all([
+    ...SFX_NAMES.map((n) => get(`assets/sfx/${n}.mp3`).then((b) => { buffers[n] = b; }).catch(() => {})),
+    get('assets/music/title.mp3').then((b) => { buffers['music:title'] = b; }).catch(() => {}),
+    get('assets/music/game.mp3').then((b) => { buffers['music:game'] = b; }).catch(() => {}),
+    fetch('assets/music/loops.json').then((r) => r.json()).then((j) => { loops = j; }).catch(() => {}),
+  ]).then(() => { if (musicWanted) playMusic(musicWanted, true); });
+  return loading;
+}
 
 export function unlockAudio() {
   try {
@@ -9,80 +42,202 @@ export function unlockAudio() {
       if (!AC) return;
       ctx = new AC();
       master = ctx.createGain();
-      master.gain.value = muted ? 0 : 0.32;
       master.connect(ctx.destination);
-      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const d = noiseBuf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      sfxBus = ctx.createGain();
+      sfxBus.connect(master);
+      musicFilter = ctx.createBiquadFilter();
+      musicFilter.type = 'lowpass';
+      musicFilter.frequency.value = 20000;
+      musicBus = ctx.createGain();
+      musicBus.gain.value = MUSIC_VOL;
+      musicBus.connect(musicFilter);
+      musicFilter.connect(master);
+      applyMode();
+      load();
     }
     if (ctx.state === 'suspended') ctx.resume();
   } catch { /* audio tidak tersedia */ }
 }
 
-export function setMuted(m) {
-  muted = m;
-  if (master) master.gain.value = m ? 0 : 0.32;
+// ------------------------------------------------------------ mode suara
+function applyMode() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  master.gain.value = mode === 'off' ? 0 : 1;
+  musicBus.gain.cancelScheduledValues(t);
+  musicBus.gain.setValueAtTime(mode === 'all' ? MUSIC_VOL : 0, t);
 }
-export function isMuted() { return muted; }
+export function setSoundMode(m) { mode = ['all', 'sfx', 'off'].includes(m) ? m : 'all'; applyMode(); }
+export function getSoundMode() { return mode; }
+export function cycleSoundMode() { setSoundMode(mode === 'all' ? 'sfx' : mode === 'sfx' ? 'off' : 'all'); return mode; }
+// kompatibilitas lama
+export function setMuted(m) { setSoundMode(m ? 'off' : 'all'); }
+export function isMuted() { return mode === 'off'; }
 
-function ready() { return ctx && ctx.state === 'running' && !muted; }
-
-function tone(freq, dur, { type = 'square', slide = 0, vol = 0.2, delay = 0, attack = 0.005 } = {}) {
-  if (!ready()) return;
-  const t0 = ctx.currentTime + delay;
-  const osc = ctx.createOscillator();
-  const g = ctx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, t0);
-  if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq * Math.pow(2, slide)), t0 + dur);
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(vol, t0 + attack);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  osc.connect(g); g.connect(master);
-  osc.start(t0); osc.stop(t0 + dur + 0.02);
-}
-
-function noise(dur, { vol = 0.2, freq = 1200, q = 0.8, type = 'lowpass', sweep = 0, delay = 0 } = {}) {
-  if (!ready()) return;
-  const t0 = ctx.currentTime + delay;
+// ------------------------------------------------------------ pemutar SFX
+function play(name, { vol = 1, rate = 1, pan = 0, delay = 0, offset = 0, dur } = {}) {
+  if (!ctx || ctx.state !== 'running' || mode === 'off') return null;
+  const buf = buffers[name];
+  if (!buf) return null;
   const src = ctx.createBufferSource();
-  src.buffer = noiseBuf;
-  const f = ctx.createBiquadFilter();
-  f.type = type; f.Q.value = q;
-  f.frequency.setValueAtTime(freq, t0);
-  if (sweep) f.frequency.exponentialRampToValueAtTime(Math.max(40, freq * Math.pow(2, sweep)), t0 + dur);
+  src.buffer = buf;
+  src.playbackRate.value = rate;
   const g = ctx.createGain();
-  g.gain.setValueAtTime(vol, t0);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  src.connect(f); f.connect(g); g.connect(master);
-  src.start(t0, Math.random() * 0.5); src.stop(t0 + dur + 0.02);
+  g.gain.value = vol;
+  let node = src;
+  if (pan && ctx.createStereoPanner) {
+    const p = ctx.createStereoPanner();
+    p.pan.value = Math.max(-1, Math.min(1, pan));
+    node.connect(p); node = p;
+  }
+  node.connect(g);
+  g.connect(sfxBus);
+  const t = ctx.currentTime + delay;
+  if (dur) {
+    g.gain.setValueAtTime(vol, t + Math.max(0, dur - 0.25));
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    src.start(t, offset, dur + 0.05);
+  } else src.start(t, offset);
+  return src;
+}
+const pick = (base, n) => `${base}-${(Math.random() * n) | 0}`;
+const vary = (amt = 0.06) => 1 + (Math.random() * 2 - 1) * amt;   // variasi pitch kecil supaya tidak monoton
+const panX = (x) => (x / 80) * 1.4 - 0.7;                          // posisi papan 0..80 → stereo
+
+// Musik meredup sesaat (ledakan, jingle) lalu kembali.
+function duck(level = 0.35, hold = 0.5) {
+  if (!ctx || mode !== 'all') return;
+  const t = ctx.currentTime;
+  duckUntil = Math.max(duckUntil, t + hold);
+  musicBus.gain.cancelScheduledValues(t);
+  musicBus.gain.setValueAtTime(musicBus.gain.value, t);
+  musicBus.gain.linearRampToValueAtTime(MUSIC_VOL * level, t + 0.05);
+  musicBus.gain.setValueAtTime(MUSIC_VOL * level, duckUntil);
+  musicBus.gain.linearRampToValueAtTime(MUSIC_VOL, duckUntil + 0.6);
 }
 
-const semi = (n) => Math.pow(2, n / 12);
+// ------------------------------------------------------------ musik
+function playMusic(name, force = false) {
+  musicWanted = name;
+  if (!ctx) return;
+  if (!force && musicName === name && musicSrc) return;
+  const old = musicSrc;
+  if (old) {
+    const g = old._gain, t = ctx.currentTime;
+    g.gain.setValueAtTime(g.gain.value, t);
+    g.gain.linearRampToValueAtTime(0.0001, t + 0.6);
+    old.stop(t + 0.65);
+  }
+  musicSrc = null; musicName = null;
+  const buf = name && buffers['music:' + name];
+  if (!buf) return;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  src.loopStart = 0;
+  src.loopEnd = loops[name] || buf.duration;
+  const g = ctx.createGain();
+  g.gain.value = 0.0001;
+  g.gain.linearRampToValueAtTime(1, ctx.currentTime + 0.8);
+  src.connect(g); g.connect(musicBus);
+  src._gain = g;
+  src.start();
+  musicSrc = src; musicName = name;
+}
+export function setMusic(name) { playMusic(name); }
 
+// Saat bahaya: musik teredam & sedikit lebih pelan agar detak jantung terdengar.
+export function setDanger(on) {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  musicFilter.frequency.cancelScheduledValues(t);
+  musicFilter.frequency.setTargetAtTime(on ? 900 : 20000, t, 0.15);
+}
+
+// Saat jeda: musik pelan.
+export function setPausedMusic(paused) {
+  if (!ctx || !musicSrc) return;
+  const g = musicSrc._gain, t = ctx.currentTime;
+  g.gain.setTargetAtTime(paused ? 0.3 : 1, t, 0.1);
+}
+
+// Info untuk pengujian (window.sandtilt.audio()).
+export function audioDebug() {
+  return {
+    state: ctx ? ctx.state : 'none', mode, music: musicName, wanted: musicWanted,
+    loaded: Object.keys(buffers).length, expected: SFX_NAMES.length + 2,
+    filterHz: musicFilter ? Math.round(musicFilter.frequency.value) : null,
+  };
+}
+
+// ------------------------------------------------------------ API efek suara
 export const sfx = {
-  click() { tone(660, 0.05, { vol: 0.1 }); },
-  move() { tone(240, 0.03, { vol: 0.05, type: 'triangle' }); },
-  rotate() { tone(420, 0.06, { vol: 0.07, slide: 0.4, type: 'triangle' }); },
-  land() { noise(0.14, { vol: 0.22, freq: 2200, sweep: -1.5 }); },
-  hardDrop() { noise(0.2, { vol: 0.32, freq: 1400, sweep: -2 }); tone(110, 0.14, { type: 'sine', slide: -1, vol: 0.25 }); },
-  tilt(dir) { noise(0.38, { vol: 0.18, freq: dir > 0 ? 500 : 700, type: 'bandpass', q: 1.5, sweep: dir > 0 ? 1.2 : -0.6 }); },
-  tiltFail() { tone(150, 0.08, { vol: 0.08, type: 'square', slide: -0.3 }); },
-  clear(chain) {
-    const base = 523.25 * semi(Math.min(chain - 1, 8) * 2);
-    [0, 4, 7, 12].forEach((n, k) => tone(base * semi(n), 0.16, { vol: 0.12, type: 'square', delay: k * 0.045 }));
-    noise(0.3, { vol: 0.12, freq: 4000, type: 'highpass', delay: 0.02 });
+  // menu
+  click() { play('ui-confirm', { vol: 0.7 }); },
+  cursor() { play('ui-cursor', { vol: 0.6 }); },
+  back() { play('ui-back', { vol: 0.7 }); },
+  pause() { play('ui-pause', { vol: 0.8 }); },
+  resume() { play('ui-resume', { vol: 0.8 }); },
+  toggle() { play('ui-toggle', { vol: 0.8 }); },
+
+  // piece
+  move() { play('move', { vol: 0.35, rate: vary(0.04) }); },
+  rotate() { play('rotate', { vol: 0.5, rate: vary(0.05) }); },
+  land(d = {}) {
+    const pan = d.x != null ? panX(d.x + 12) : 0;
+    if (d.mat === 1) play(pick('land-stone', 2), { vol: 0.75, rate: vary(0.05), pan });
+    else if (d.mat === 2) play('land-gun', { vol: 0.8, rate: vary(0.08), pan });
+    else play(pick('land-sand', 3), { vol: 0.9, rate: vary(0.08), pan });
   },
-  levelUp() { [0, 5, 9, 12, 17].forEach((n, k) => tone(392 * semi(n), 0.12, { vol: 0.1, type: 'triangle', delay: k * 0.07 })); },
-  achievement() { [12, 16, 19, 24].forEach((n, k) => tone(392 * semi(n), 0.14, { vol: 0.09, type: 'sine', delay: k * 0.06 })); },
-  heartbeat() { tone(70, 0.1, { type: 'sine', vol: 0.3, slide: -0.4 }); tone(62, 0.1, { type: 'sine', vol: 0.22, slide: -0.4, delay: 0.16 }); },
-  gameOver() { [0, -3, -6, -12].forEach((n, k) => tone(330 * semi(n), 0.28, { vol: 0.13, type: 'square', delay: k * 0.16 })); },
-  explode() {
-    noise(0.7, { vol: 0.5, freq: 900, sweep: -3 });
-    tone(90, 0.5, { type: 'sine', vol: 0.4, slide: -1.5 });
-    tone(55, 0.6, { type: 'triangle', vol: 0.25, slide: -1, delay: 0.05 });
+  hardDrop(d = {}) {
+    const pan = d.x != null ? panX(d.x + 12) : 0;
+    play('harddrop', { vol: 0.8, rate: vary(0.05), pan });
+    this.land({ ...d, x: d.x });
   },
-  warn() { [0, 0.18, 0.36].forEach((d) => tone(880, 0.09, { vol: 0.1, type: 'square', delay: d })); },
-  wind(dir) { noise(2.5, { vol: 0.14, freq: dir > 0 ? 400 : 600, type: 'bandpass', q: 0.7, sweep: 0.8 }); },
-  quake() { noise(0.8, { vol: 0.35, freq: 200, sweep: -1 }); tone(50, 0.7, { type: 'sine', vol: 0.3, slide: -0.5 }); },
+
+  // miring
+  tilt(dir) {
+    play('tilt-slide', { vol: 0.8, rate: vary(0.06), pan: dir * 0.6 });
+    play('force-creak', { vol: 0.25, rate: 1.4, pan: dir * 0.4 });
+  },
+  tiltFail() { play('tilt-fail', { vol: 0.5 }); },
+
+  // clear & chain: nada naik setiap chain
+  clear(chain = 1, x = 40) {
+    const rate = Math.min(2, 1 + 0.09 * (chain - 1));
+    play('clear', { vol: 0.75, rate });
+    if (chain > 1) play('chain', { vol: 0.55, rate, delay: 0.08, pan: panX(x) * 0.5 });
+    duck(0.55, 0.3);
+  },
+  // butir larut (saat ledakan partikel)
+  scatter(x = 40) { play(pick('land-sand', 3), { vol: 0.45, rate: 1.6, pan: panX(x) }); },
+
+  explode(d = {}) {
+    const cx = d.centers && d.centers.length ? d.centers.reduce((s, c) => s + c[0], 0) / d.centers.length : 40;
+    play(pick('explode', 3), { vol: 1, rate: vary(0.08), pan: panX(cx) });
+    play('explode-low', { vol: 0.9, delay: 0.02 });
+    if (d.stones > 0) play(pick('land-stone', 2), { vol: 0.7, rate: 0.8, delay: 0.12, pan: panX(cx) });
+    duck(0.25, 0.8);
+  },
+
+  // event pengganggu
+  warn() { play('jingle-warn', { vol: 0.7 }); },
+  quake() {
+    play('quake-rumble', { vol: 1, dur: 1.9 });
+    play('explode-low', { vol: 0.6, rate: 0.7 });
+    duck(0.4, 1.4);
+  },
+  wind(dir) { play('wind', { vol: 0.9, pan: dir * 0.7 }); },
+  windPush(dir) { play('wind-push', { vol: 0.45, rate: vary(0.1), pan: dir * 0.6 }); },
+  force(dir) {
+    play('force-creak', { vol: 0.9, rate: 0.8, pan: dir * 0.5 });
+    play('tilt-slide', { vol: 0.7, rate: 0.7, pan: dir * 0.6, delay: 0.15 });
+  },
+  heartbeat() { play('heartbeat', { vol: 0.9, rate: 0.75 }); play('heartbeat', { vol: 0.6, rate: 0.7, delay: 0.18 }); },
+
+  // jingle
+  levelUp() { play('jingle-level', { vol: 0.8 }); duck(0.3, 0.9); },
+  achievement(tier = 'bronze') { play('trophy-' + (buffers['trophy-' + tier] ? tier : 'bronze'), { vol: 0.85 }); duck(0.3, 0.7); },
+  material() { play('jingle-material', { vol: 0.7 }); },
+  gameOver() { playMusic(null); play('jingle-gameover', { vol: 0.9 }); },
 };

@@ -2,43 +2,59 @@
 <html lang="id">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#14121f">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0b14">
   <title>SandTilt</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main id="app">
-    <div class="stage">
-      <canvas id="screen" aria-label="SandTilt — tetris pasir"></canvas>
+    <!-- Layar game + tombol sentuh dengan tata letak ala konsol genggam.
+         .portrait (HP tegak) / .landscape (HP miring). Tanpa .has-pad (desktop) hanya layar yang tampil. -->
+    <div id="console" class="console landscape">
+      <button class="shoulder shoulder-l" data-btn="l" aria-label="Miring kiri (L)"><b>L</b><span>MIRING</span></button>
+      <button class="shoulder shoulder-r" data-btn="r" aria-label="Miring kanan (R)"><span>MIRING</span><b>R</b></button>
 
-      <div id="namebox" class="overlay">
-        <form id="nameform" class="panel" autocomplete="off">
-          <h2>NAMA PEMAIN</h2>
-          <p>Nama ini tampil di papan peringkat.</p>
-          <input id="nameinput" maxlength="16" spellcheck="false" autocapitalize="characters" placeholder="2-16 karakter">
-          <p id="nameerr" class="err"></p>
-          <div class="btns">
-            <button type="submit">SIMPAN</button>
-            <button type="button" id="nameskip">LEWATI</button>
+      <section class="area-screen">
+          <div id="slot" class="slot">
+            <canvas id="screen" aria-label="SandTilt — tetris pasir"></canvas>
+
+            <div id="namebox" class="overlay">
+              <form id="nameform" class="panel" autocomplete="off">
+                <h2>NAMA PEMAIN</h2>
+                <p>Nama ini tampil di papan peringkat.</p>
+                <input id="nameinput" maxlength="16" spellcheck="false" autocapitalize="characters" placeholder="2-16 karakter">
+                <p id="nameerr" class="err"></p>
+                <div class="btns">
+                  <button type="submit">SIMPAN</button>
+                  <button type="button" id="nameskip">LEWATI</button>
+                </div>
+              </form>
+            </div>
           </div>
-        </form>
-      </div>
-    </div>
+      </section>
 
-    <div id="touch" class="touch">
-      <div class="row">
-        <button data-action="tiltL">MIRING<br>KIRI</button>
-        <button data-action="rotCW">PUTAR</button>
-        <button data-action="tiltR">MIRING<br>KANAN</button>
-        <button data-ui="pause" class="small">II</button>
-      </div>
-      <div class="row">
-        <button data-action="left">&#9664;</button>
-        <button data-action="soft">&#9660;</button>
-        <button data-action="right">&#9654;</button>
-        <button data-action="hardDrop">JATUH</button>
-      </div>
+      <section class="area-left">
+        <div class="dpad" role="group" aria-label="Arah">
+          <button class="d d-up" data-btn="up" aria-label="Atas (jatuh)"></button>
+          <button class="d d-left" data-btn="left" aria-label="Kiri"></button>
+          <span class="d d-mid"></span>
+          <button class="d d-right" data-btn="right" aria-label="Kanan"></button>
+          <button class="d d-down" data-btn="down" aria-label="Bawah"></button>
+        </div>
+      </section>
+
+      <section class="area-right">
+        <div class="ab">
+          <div class="ab-btn ab-b"><button class="round" data-btn="b" aria-label="B">B</button><span>BALIK</span></div>
+          <div class="ab-btn ab-a"><button class="round" data-btn="a" aria-label="A">A</button><span>PUTAR</span></div>
+        </div>
+      </section>
+
+      <section class="area-sys">
+        <div class="sys-btn"><button class="pill" data-btn="select" aria-label="Select (suara)"></button><span>SELECT</span></div>
+        <div class="sys-btn"><button class="pill" data-btn="start" aria-label="Start (jeda)"></button><span>START</span></div>
+      </section>
     </div>
   </main>
   <script type="module" src="js/main.js"></script>

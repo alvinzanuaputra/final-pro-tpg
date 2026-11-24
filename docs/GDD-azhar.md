@@ -259,7 +259,13 @@ CREATE TABLE IF NOT EXISTS `<NRP>_sandtilt_leaderboard` (
 - Logo memakai font kotak 3×5 yang besar.
 - Angka skor bergerak naik (*count-up*) saat bertambah.
 
-### 8.4 Layar
+### 8.4 Tombol Sentuh
+- Hanya **posisi** tombol yang meniru konsol genggam: D-pad, A, B, L, R, SELECT, START. Gayanya pixel datar sesuai UI game (latar gelap, bingkai ungu, aksen emas), tanpa badan konsol.
+- **Portrait** (HP tegak): game di atas, tombol di bawah. **Landscape** (HP miring): D-pad kiri, game di tengah, A/B kanan, L/R di pojok atas.
+- Desktop dengan keyboard: tombol disembunyikan (`?pad=1` untuk memaksa tampil).
+- Kanvas diskalakan bulat dalam piksel perangkat; di layar retina boleh sedikit diperbesar agar memenuhi ruang.
+
+### 8.5 Layar
 1. **Judul:** logo dari pasir yang berjatuhan, "Tekan / Tap untuk mulai", tombol Achievement
 2. **Main:** papan + panel samping
 3. **Pause:** overlay gelap transparan, Lanjut / Ulang / Keluar
@@ -284,6 +290,32 @@ Urutan pengerjaan berdasarkan dampak dibanding usaha:
 8. Musik latar *(paling akhir, opsional)*
 
 ---
+
+
+### 9.1 Audio (implementasi)
+- Semua SFX berupa file di `assets/sfx/` (paket Kenney CC0 + angin/pasir buatan ffmpeg), bukan sintesis JavaScript.
+- Pemetaan kejadian → suara:
+
+| Kejadian | Suara |
+|---|---|
+| Mendarat: pasir / batu / mesiu | kresek pasir (3 variasi) / benturan batu (2 variasi) / gemerisik mesiu — posisi stereo mengikuti kolom |
+| Hard drop | hentakan + suara mendarat |
+| Miring (L/R, Q/E) | pasir meluncur + derit papan, stereo ke arah miring |
+| Clear / chain | nada "power-up" yang naik setiap chain + zap untuk chain ≥ 2; butir larut berbunyi kresek tinggi |
+| Ledakan mesiu | ledakan acak (3 variasi) + dentuman rendah; batu pecah jika ada batu; musik meredup |
+| Peringatan event | jingle peringatan 8-bit |
+| Gempa / Angin / Papan miring | gemuruh 1,9 dtk / angin 5 dtk (stereo) + desir tiap dorongan / derit papan + pasir meluncur |
+| Bahaya | detak jantung + musik teredam (low-pass) |
+| Naik level / game over / material baru | jingle 8-bit naik / turun / pendek |
+| Trofi | jingle berbeda per tingkat (perunggu, perak, emas, rahasia) |
+| Menu | kursor, konfirmasi, kembali, jeda/lanjut, ganti mode suara |
+
+- Musik: chiptune orisinal `title` (96 BPM) dan `game` (132 BPM, A minor), loop mulus.
+- SELECT / M: musik + efek → efek saja → mati.
+
+### 9.2 Trofi
+- Setiap prestasi punya tingkat: **perunggu**, **perak**, **emas**, atau **rahasia**, dengan ikon piala pixel art (`assets/image/trophy-*.svg`).
+- Layar Prestasi menampilkan ikon per baris (abu-abu terkunci jika belum didapat). Notifikasi saat terbuka: "TROFI EMAS!" + nama + ikon + jingle.
 
 ## 10. Teknis
 

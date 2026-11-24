@@ -162,7 +162,23 @@ export class Renderer {
 
   addFloat(text, x, y, color, life = 1) { this.floats.push({ text, x, y, color, t: 0, life }); }
 
-  showToast(title, name) { this.toast = { title, name, t: 0 }; }
+  // icon: tier trofi (bronze/silver/gold/secret) atau null
+  showToast(title, name, icon = null) { this.toast = { title, name, icon, t: 0 }; }
+
+  // Ikon trofi pixel art 12x11 dari assets/image (dimuat sekali).
+  drawTrophy(ctx, tier, x, y) {
+    if (!this.icons) {
+      this.icons = {};
+      for (const t of ['bronze', 'silver', 'gold', 'secret', 'locked']) {
+        const img = new Image();
+        img.src = `assets/image/trophy-${t}.svg`;
+        this.icons[t] = img;
+      }
+    }
+    const img = this.icons[tier] || this.icons.locked;
+    if (img.complete && img.naturalWidth) ctx.drawImage(img, Math.round(x), Math.round(y), 12, 11);
+    else { ctx.fillStyle = this.pal.accent; ctx.fillRect(Math.round(x) + 2, Math.round(y) + 1, 8, 8); }
+  }
 
   // Tekstur satu titik di dalam blok n×n (dipakai piece jatuh, preview NEXT).
   texel(mat, c, lx, ly, n, salt = 0) {
@@ -185,16 +201,22 @@ export class Renderer {
 
   // ---------- ukuran ----------
   resize(availW, availH) {
-    this.scale = Math.max(1, Math.floor(Math.min(availW / LW, availH / LH)));
+    // Skala bulat dalam piksel PERANGKAT (bukan CSS), jadi di HP dpr 3 layar bisa memenuhi slot tanpa blur.
     const dpr = window.devicePixelRatio || 1;
-    const cw = LW * this.scale, ch = LH * this.scale;
-    this.canvas.style.width = cw + 'px';
-    this.canvas.style.height = ch + 'px';
-    this.canvas.width = Math.round(cw * dpr);
-    this.canvas.height = Math.round(ch * dpr);
+    const fit = Math.min((availW * dpr) / LW, (availH * dpr) / LH);
+    const k = Math.max(1, Math.floor(fit));
+    this.canvas.width = LW * k;
+    this.canvas.height = LH * k;
+    // Layar padat (HP, retina): kanvas boleh diperbesar sedikit lagi oleh CSS supaya memenuhi slot;
+    // selisih ukuran piksel di layar seperti itu tidak terlihat. Layar biasa tetap skala bulat.
+    const shown = dpr >= 2 ? Math.max(k, fit) : k;
+    this.canvas.style.width = (LW * shown) / dpr + 'px';
+    this.canvas.style.height = (LH * shown) / dpr + 'px';
     this.ctx.imageSmoothingEnabled = false;
-    this.k = this.canvas.width / LW;
-    this.tp = Math.max(1, Math.round(this.k / 2));
+    this.scale = k / dpr;
+    this.k = k;
+    // ukuran titik teks: sekitar setengah piksel papan, maksimal 4 piksel logis per huruf
+    this.tp = Math.max(1, Math.min(Math.round(k * 0.6), Math.floor((k * 4) / 6)));
   }
 
   hit(lx, ly) {
@@ -445,9 +467,9 @@ export class Renderer {
       ctx.fillRect(PX + (k - 1) * 6, y, 4, 4);
     }
 
-    if (!ui.touch && this.k >= 2) {   // di layar sangat kecil teks bantuan tidak muat
-      this.txt('TAHAN Q/E MIRING', PX, 144, P.dim);
-      this.txt('P JEDA  M SUARA', PX, 151, P.dim);
+    if (this.k >= 2) {   // di layar sangat kecil teks bantuan tidak muat
+      this.txt(ui.touch ? 'TAHAN L/R MIRING' : 'TAHAN Q/E MIRING', PX, 144, P.dim);
+      this.txt(ui.touch ? 'START JEDA' : 'P JEDA  M SUARA', PX, 151, P.dim);
     }
     this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
   }
@@ -466,7 +488,7 @@ export class Renderer {
       col = pulse ? P.accent : P.text;
     } else {
       line1 = e.type === 'quake' ? 'GEMPA!' : `${EVENT_NAMES[e.type]} ${arrow}`;
-      if (e.type === 'force') line2 = ui.touch ? `TAHAN MIRING ${e.dir > 0 ? 'KIRI' : 'KANAN'}` : `TAHAN ${e.dir > 0 ? 'Q' : 'E'} MELAWAN`;
+      if (e.type === 'force') line2 = ui.touch ? `TAHAN ${e.dir > 0 ? 'L' : 'R'} MELAWAN` : `TAHAN ${e.dir > 0 ? 'Q' : 'E'} MELAWAN`;
       if (e.type === 'wind') line2 = 'PIECE TERDORONG';
       col = P.danger;
     }
@@ -538,11 +560,16 @@ export class Renderer {
     this.menu(ctx, ui, [['play', 'MAIN'], ['board', 'PERINGKAT'], ['ach', 'PRESTASI']], 66);
     this.txt(`TERBAIK: ${ui.best}`, LW / 2, 118, P.accent, 1, 'center');
     if (ui.playerName) this.txt(`PEMAIN: ${ui.playerName}`, LW / 2, 126, P.dim, 1, 'center');
-    if (!ui.touch) {
+    if (ui.touch) {
+      this.txt('A PUTAR   B BALIK   ^ JATUH', LW / 2, 146, P.dim, 1, 'center');
+      this.txt('TAHAN L / R MIRING   START JEDA', LW / 2, 154, P.dim, 1, 'center');
+    } else {
       this.txt('<- -> GESER   ^ PUTAR   SPASI JATUH', LW / 2, 146, P.dim, 1, 'center');
       this.txt('TAHAN Q / E MIRING   P JEDA', LW / 2, 154, P.dim, 1, 'center');
     }
-    if (ui.muted) this.txt('SUARA: MATI (M)', LW / 2, 165, P.dim, 1, 'center');
+    if (ui.soundMode && ui.soundMode !== 'all') {
+      this.txt(ui.soundMode === 'off' ? 'SUARA: MATI' : 'MUSIK: MATI', LW / 2, 165, P.dim, 1, 'center');
+    }
   }
 
   drawPause(ctx, ui) {
@@ -613,15 +640,13 @@ export class Renderer {
     this.dim(ctx, 0.6);
     this.txt('PRESTASI', LW / 2, 4, P.text, 2, 'center');
     const list = ui.ach || [];
-    this.txt(`${list.filter((a) => a.unlocked).length}/${list.length}`, LW / 2, 18, P.dim, 1, 'center');
+    this.txt(`TROFI ${list.filter((a) => a.unlocked).length}/${list.length}`, LW / 2, 18, P.dim, 1, 'center');
     let y = 27;
     for (const a of list) {
       const show = a.unlocked || !a.hidden;
-      ctx.fillStyle = a.unlocked ? P.accent : P.shadow;
-      ctx.fillRect(6, y, 7, 7);
-      if (!a.unlocked) { ctx.fillStyle = P.frame; ctx.fillRect(8, y + 2, 3, 3); }
-      this.txt(show ? a.name : '???', 17, y - 0.5, a.unlocked ? P.text : P.dim);
-      this.txt(show ? a.desc : 'RAHASIA', 17, y + 4.5, P.dim);
+      this.drawTrophy(ctx, a.unlocked ? a.tier : 'locked', 4, y - 1);
+      this.txt(show ? a.name : '???', 19, y - 0.5, a.unlocked ? P.text : P.dim);
+      this.txt(show ? a.desc : 'RAHASIA', 19, y + 4.5, P.dim);
       y += 11;
     }
     this.menu(ctx, { focus: 0 }, [['back', 'KEMBALI']], 160, 60);
@@ -635,11 +660,18 @@ export class Renderer {
     const P = this.pal;
     const slide = Math.min(1, t.t * 6, (2.6 - t.t) * 6);
     const y = Math.round(-16 + 18 * slide);
-    const w = Math.ceil(Math.max(this.tw(t.name), this.tw(t.title))) + 10;
+    const iconW = t.icon ? 15 : 0;
+    const w = Math.ceil(Math.max(this.tw(t.name), this.tw(t.title))) + 10 + iconW;
     const x = Math.floor((LW - w) / 2);
     ctx.fillStyle = P.accent; ctx.fillRect(x, y, w, 16);
     ctx.fillStyle = P.shadow; ctx.fillRect(x + 1, y + 1, w - 2, 14);
-    this.txt(t.title, LW / 2, y + 2, P.accent, 1, 'center');
-    this.txt(t.name, LW / 2, y + 8.5, P.text, 1, 'center');
+    if (t.icon) {
+      // trofi berkilau sebentar saat muncul
+      const bob = t.t < 0.6 ? Math.round(Math.sin(t.t * 20) * 1) : 0;
+      this.drawTrophy(ctx, t.icon, x + 3, y + 2.5 + bob);
+    }
+    const cx = x + iconW + (w - iconW) / 2;
+    this.txt(t.title, cx, y + 2, P.accent, 1, 'center');
+    this.txt(t.name, cx, y + 8.5, P.text, 1, 'center');
   }
 }

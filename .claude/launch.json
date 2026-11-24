@@ -6,6 +6,12 @@
       "runtimeExecutable": "php",
       "runtimeArgs": ["-S", "localhost:8000"],
       "port": 8000
+    },
+    {
+      "name": "sandtilt-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8001", "--bind", "127.0.0.1"],
+      "port": 8001
     }
   ]
 }

@@ -8,7 +8,7 @@ export const H = ROWS * BLOCK;     // 160 butir
 
 // Material butir. Setiap piece punya warna (1..5) DAN material.
 export const MAT_SAND = 0;         // Pasir: longsor & ikut tilt
-export const MAT_STONE = 1;        // Batu: hanya jatuh lurus, tidak longsor, tidak terdorong tilt/gempa
+export const MAT_STONE = 1;        // Batu: benda kaku. Satu kelompok batu bergerak sebagai satu blok, ikut kemiringan tanah, tidak terdorong gempa
 export const MAT_GUN = 2;          // Mesiu: seperti pasir, meledak kalau ikut/tersentuh clear
 
 export const CFG = {

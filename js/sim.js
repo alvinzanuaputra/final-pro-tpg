@@ -36,12 +36,82 @@ export class Sand {
     t = s[i]; s[i] = s[j]; s[j] = t;
   }
 
+  // Batu sebagai benda kaku. Setiap kelompok batu yang saling menyentuh (4 arah) dihitung sebagai satu blok
+  // dan bergerak utuh: jatuh lurus; kalau tertahan dan tanah miring, meluncur diagonal lalu ke samping.
+  // Blok diproses dari bawah ke atas supaya yang di bawah bergerak lebih dulu. Mengembalikan jumlah blok yang bergerak.
+  stepStones(tiltDir) {
+    const c = this.cells, m = this.mat, s = this.shade, vis = this.visited, q = this.queue, rng = this.rng;
+    const N = W * H;
+    const st = ++this.stamp;
+    const bodies = [];
+
+    // 1. Kumpulkan kelompok batu (BFS 4 arah, lintas warna).
+    for (let i = 0; i < N; i++) {
+      if (c[i] === 0 || m[i] !== MAT_STONE || vis[i] === st) continue;
+      let head = 0, tail = 1;
+      q[0] = i; vis[i] = st;
+      while (head < tail) {
+        const j = q[head++];
+        const x = j % W, y = (j - x) / W;
+        for (let d = 0; d < 4; d++) {
+          let k;
+          if (d === 0) { if (x === 0) continue; k = j - 1; }
+          else if (d === 1) { if (x === W - 1) continue; k = j + 1; }
+          else if (d === 2) { if (y === 0) continue; k = j - W; }
+          else { if (y === H - 1) continue; k = j + W; }
+          if (c[k] !== 0 && m[k] === MAT_STONE && vis[k] !== st) { vis[k] = st; q[tail++] = k; }
+        }
+      }
+      let bottom = 0;
+      for (let k = 0; k < tail; k++) { const r = (q[k] - (q[k] % W)) / W; if (r > bottom) bottom = r; }
+      bodies.push({ cells: q.slice(0, tail), bottom });
+    }
+    if (bodies.length === 0) return 0;
+    bodies.sort((a, b) => b.bottom - a.bottom);
+
+    // 2. Coba geser satu blok utuh. Semua sel tujuan harus kosong atau milik blok itu sendiri.
+    const tryMove = (cells, dx, dy) => {
+      const bs = ++this.stamp;
+      for (let k = 0; k < cells.length; k++) vis[cells[k]] = bs;
+      for (let k = 0; k < cells.length; k++) {
+        const j = cells[k], x = j % W, y = (j - x) / W;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= W || ny < 0 || ny >= H) return false;
+        const t = j + dy * W + dx;
+        if (c[t] !== 0 && vis[t] !== bs) return false;
+      }
+      const n = cells.length;
+      const cv = new Uint8Array(n), mv = new Uint8Array(n), sv = new Uint8Array(n);
+      for (let k = 0; k < n; k++) {
+        const j = cells[k];
+        cv[k] = c[j]; mv[k] = m[j]; sv[k] = s[j];
+        c[j] = 0; m[j] = 0; s[j] = 0;
+      }
+      for (let k = 0; k < n; k++) {
+        const t = cells[k] + dy * W + dx;
+        c[t] = cv[k]; m[t] = mv[k]; s[t] = sv[k];
+      }
+      return true;
+    };
+
+    let moved = 0;
+    for (const b of bodies) {
+      if (tryMove(b.cells, 0, 1)) { moved++; continue; }
+      if (tiltDir !== 0) {
+        if (tryMove(b.cells, tiltDir, 1)) { moved++; continue; }
+        if (rng() < 0.3 && tryMove(b.cells, tiltDir, 0)) { moved++; continue; }
+      }
+    }
+    return moved;
+  }
+
   // Satu langkah simulasi. tiltDir: -1 kiri, 0 normal, 1 kanan.
   // jitter: peluang butir yang diam bergeser acak ke samping (event gempa). Mengembalikan jumlah butir yang bergerak.
   step(tiltDir, jitter = 0) {
     const c = this.cells, m = this.mat, rng = this.rng;
     this.tick++;
-    let moved = 0;
+    // Batu bergerak dulu sebagai blok kaku; pasir di sekitarnya dihitung setelahnya.
+    let moved = this.stepStones(tiltDir);
     // Saat tilt, scan berlawanan arah tilt supaya butir yang bergeser tidak diproses dua kali.
     const ltr = tiltDir !== 0 ? tiltDir < 0 : (this.tick & 1) === 0;
 
@@ -52,13 +122,11 @@ export class Sand {
       for (let k = 0; k < W; k++) {
         const x = ltr ? k : W - 1 - k;
         const i = row + x;
-        if (c[i] === 0) continue;
+        // Batu ditangani stepStones; di sini hanya pasir dan mesiu.
+        if (c[i] === 0 || m[i] === MAT_STONE) continue;
 
-        // 1. Turun lurus (semua material, termasuk batu)
+        // 1. Turun lurus
         if (hasBelow && c[below + x] === 0) { this.move(i, below + x); moved++; continue; }
-
-        // Batu berat: hanya jatuh lurus, tidak longsor, tidak terdorong tilt/gempa.
-        if (m[i] === MAT_STONE) continue;
 
         if (hasBelow) {
           // 2. Diagonal bawah

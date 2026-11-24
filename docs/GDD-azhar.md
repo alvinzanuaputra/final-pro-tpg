@@ -67,7 +67,7 @@ Setiap piece punya **warna** (3–5 warna aktif) **dan material**. Material khus
 |---|---|---|---|---|
 | **Pasir** | — | sisanya | Butiran warna | Longsor diagonal, ikut tilt, gempa, dan papan miring. |
 | **Mesiu** | Level 2 | ±9% piece | Warna sangat gelap + bintik api oranye | Longsor seperti pasir dan **ikut jembatan warnanya**. Kalau **ikut di-clear atau bersentuhan dengan butir yang di-clear**, mesiu menyala, api merambat ke seluruh mesiu yang tersambung (warna apa pun), lalu **meledak**: semua butir dalam radius 7 butir ikut hancur, termasuk batu. |
-| **Batu** | Level 3 | ±7% piece | Blok warna gelap padat: tepi atas terang, tepi bawah gelap, retakan | **Tidak longsor**: hanya jatuh **lurus ke bawah** per kolom, jadi blok batu ikut "duduk" mengikuti kemiringan tanah. Tidak terdorong tilt, gempa, atau papan miring. **Ikut jembatan warnanya** (batu merah menyambung jembatan merah). Selain lewat jembatan, hanya hancur oleh ledakan mesiu. |
+| **Batu** | Level 3 | ±7% piece | Blok warna gelap padat: tepi atas terang, tepi bawah gelap, retakan | **Benda kaku**: setiap kelompok batu yang menyentuh bergerak **utuh sebagai satu blok** (bentuknya tidak pernah hancur atau tercerai). Jatuh lurus; kalau tertahan dan tanah miring, **meluncur** diagonal lalu ke samping mengikuti kemiringan. Tidak terdorong gempa. **Ikut jembatan warnanya** (batu merah menyambung jembatan merah). Selain lewat jembatan, hanya hancur oleh ledakan mesiu. |
 
 - Butir yang ikut hancur karena ledakan dihitung ke skor clear dengan multiplier yang sama.
 - Efek: layar bergetar kuat, kilat, percikan api oranye, teks "LEDAKAN!" / "BATU HANCUR!", dan bunyi ledakan.

@@ -13,8 +13,8 @@
 | **Pitch** | Tetris yang hancur jadi pasir. Miringkan papan untuk mengalirkan pasir, sambungkan satu warna dari dinding kiri ke kanan, lalu picu reaksi berantai. |
 | **Genre** | Puzzle / arcade, endless |
 | **Game acuan** | Tetris klasik + simulasi *falling sand* (cellular automata) |
-| **Peningkatan utama** | (1) **Kaskade berantai**, (2) **Tilt** (memiringkan papan), (3) **Achievement & easter egg** |
-| **Platform** | Web (HTML5 Canvas), di-upload ke gameedukasi.com sebagai static web |
+| **Peningkatan utama** | (1) **Kaskade berantai**, (2) **Tilt** (memiringkan papan), (3) **Achievement & easter egg**, (4) **Leaderboard online mingguan & all-time** |
+| **Platform** | Web (HTML5 Canvas), di-upload ke gameedukasi.com (file web + API PHP + database MySQL) |
 | **Kontrol** | Keyboard (utama) + layar sentuh (tombol on-screen) |
 | **Durasi sesi** | 3–8 menit per run |
 | **Gaya visual** | Pixel art, palet terbatas, latar gelap |
@@ -31,7 +31,7 @@ Lihat NEXT piece → geser/putar → piece mendarat → hancur jadi pasir
 
 - **Detik ke detik:** atur piece, tilt untuk mengalirkan pasir ke celah, dan bentuk jembatan warna.
 - **Per run:** mode Endless, level naik setiap 5 clear. Run selesai saat game over, lalu muncul layar hasil.
-- **Meta:** high score, chain terbaik, achievement, dan palet warna yang sudah terbuka (disimpan di `localStorage`).
+- **Meta:** high score, chain terbaik, achievement, dan palet warna yang sudah terbuka (disimpan di `localStorage`), plus **peringkat di leaderboard mingguan dan all-time** (online, lihat bagian 6).
 
 ---
 
@@ -125,7 +125,78 @@ Disimpan di `localStorage`. Saat terbuka muncul toast kecil, dan beberapa achiev
 
 ---
 
-## 6. Kontrol
+## 6. Leaderboard Mingguan & All-Time
+
+Tujuan: memberi alasan "main sekali lagi" di mode Endless. Reset mingguan memberi peluang pemain baru, all-time menyimpan rekor legendaris.
+
+Pola teknisnya mengikuti game sebelumnya (Cyber Rune Hunter) yang sudah terbukti jalan di gameedukasi.com: **JS → `api/leaderboard.php` → MySQL**, dengan fallback SQLite untuk tes lokal.
+
+### 6.1 Identitas Pemain
+- **`player_uuid`**: dibuat sekali dengan `crypto.randomUUID()`, disimpan di `localStorage`. Tidak perlu login.
+- **Nickname**: 2–16 karakter, diminta saat pertama kali skor akan dikirim (bisa diganti di menu).
+  - Nickname **unik antar UUID**: kalau sudah dipakai pemain lain, pemain diminta pilih nama lain.
+  - Tidak meminta data pribadi apa pun.
+- Keterbatasan yang diterima: hapus data browser / ganti perangkat = UUID baru.
+
+### 6.2 Aturan Periode
+- **Mingguan:** periode dimulai **Senin 00:00 WIB**. Disimpan sebagai `week_start` = tanggal Senin (`YYYY-MM-DD`).
+- `week_start` **dihitung di server** (PHP, zona waktu `Asia/Jakarta`), bukan dari jam browser, supaya tidak bisa diakali.
+- **All-time:** skor maksimum tiap `player_uuid` dari semua minggu (tidak perlu tabel terpisah).
+- Setiap pemain hanya punya **1 baris per minggu**, berisi skor terbaiknya minggu itu.
+
+### 6.3 Tabel Database (`database.sql`)
+Nama tabel diberi prefix NRP pengunggah dan nama game supaya tidak bentrok dengan tabel game lain:
+
+```sql
+CREATE TABLE IF NOT EXISTS `<NRP>_sandtilt_leaderboard` (
+  `id`           INT AUTO_INCREMENT PRIMARY KEY,
+  `player_uuid`  VARCHAR(64)  NOT NULL,
+  `player_name`  VARCHAR(16)  NOT NULL,
+  `week_start`   DATE         NOT NULL,
+  `score`        INT          NOT NULL,
+  `max_chain`    TINYINT      NOT NULL DEFAULT 0,
+  `level`        SMALLINT     NOT NULL DEFAULT 1,
+  `clears`       INT          NOT NULL DEFAULT 0,
+  `duration_sec` INT          NOT NULL DEFAULT 0,
+  `created_at`   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`   TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_player_week` (`player_uuid`, `week_start`),
+  INDEX `idx_week_score` (`week_start`, `score` DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+### 6.4 API (`api/leaderboard.php`)
+| Aksi | Method | Input | Output |
+|---|---|---|---|
+| `get` | GET | `tab=weekly\|alltime`, `uuid` | Top 10 + baris & peringkat pemain sendiri + `week_start` aktif |
+| `submit` | POST (JSON) | `player_uuid`, `player_name`, `score`, `max_chain`, `level`, `clears`, `duration_sec` | `{ saved, new_best, rank_weekly, rank_alltime }` |
+| `claim_name` | POST (JSON) | `player_uuid`, `player_name` | `{ ok }` atau `NAME_TAKEN` |
+
+- `submit` hanya memperbarui baris minggu ini kalau skor baru **lebih tinggi** (seri → durasi lebih singkat menang).
+- Semua query pakai **prepared statement**.
+- Pesan error database **tidak** dikirim ke browser, cukup dicatat di log server.
+
+### 6.5 Validasi Skor (anti-curang ringan)
+- Skor ditolak kalau melebihi batas kasar: `clears × 12.800 × 8 × 2 × M_level maks` atau kalau `duration_sec` terlalu pendek untuk level yang dicapai.
+- Maksimal 1 `submit` per 10 detik per UUID.
+- Ini bukan anti-cheat sempurna, tapi cukup untuk tugas kuliah.
+
+### 6.6 Mode Offline
+- Kalau API tidak bisa dihubungi, game tetap jalan dan leaderboard menampilkan **rekor lokal** (`localStorage`) dengan label "OFFLINE".
+- Skor yang gagal terkirim disimpan dan dicoba kirim ulang saat game dibuka berikutnya.
+
+### 6.7 Tampilan
+- Layar **Leaderboard** dengan dua tab: **MINGGU INI** dan **SEPANJANG MASA**.
+- Top 10 + baris pemain sendiri disorot ("KAMU #23") kalau di luar Top 10.
+- Hitung mundur reset: "Reset dalam 2h 14j".
+- Di layar Game Over: "REKOR MINGGU INI!" kalau skor baru jadi terbaik pemain minggu itu, plus peringkatnya.
+
+### 6.8 Seed Mingguan *(nice-to-have)*
+- Urutan piece memakai seed dari `week_start`, jadi semua pemain di minggu yang sama mendapat urutan piece yang sama. Leaderboard jadi lebih adil.
+
+---
+
+## 7. Kontrol
 
 | Aksi | Keyboard | Layar sentuh |
 |---|---|---|
@@ -143,9 +214,9 @@ Disimpan di `localStorage`. Saat terbuka muncul toast kecil, dan beberapa achiev
 
 ---
 
-## 7. Arah Visual (Pixel Art)
+## 8. Arah Visual (Pixel Art)
 
-### 7.1 Prinsip
+### 8.1 Prinsip
 - **Seluruh game digambar di resolusi kecil lalu diperbesar dengan skala bulat** (×3/×4, tanpa smoothing). Pasir, UI, dan teks otomatis terlihat pixel yang konsisten.
 - Resolusi logis layar desktop: **160 × 176 px**.
   - Papan 80×160 di kiri (dengan bingkai 1–2 px)
@@ -153,28 +224,30 @@ Disimpan di `localStorage`. Saat terbuka muncul toast kecil, dan beberapa achiev
 - Mode HP (portrait): HUD satu baris di atas papan, tombol sentuh (HTML) di bawah papan.
 - **Tidak perlu menggambar sprite.** Hampir semua elemen dibuat lewat kode: kotak, bingkai, ikon kecil 5×5/7×7 yang ditulis sebagai array piksel.
 
-### 7.2 Palet
+### 8.2 Palet
 - Latar gelap kebiruan, papan sedikit lebih terang, bingkai satu warna aksen.
 - 5 warna pasir dengan kontras **nilai terang** yang berbeda (bukan hanya beda hue), dan masing-masing punya 4 shade.
 - Ambil dasar palet dari koleksi palet gratis (misalnya situs **Lospec**), cek lisensinya, lalu sesuaikan.
 - *(Nice-to-have)* Palet ramah buta warna + pola titik berbeda per warna.
 
-### 7.3 Teks
+### 8.3 Teks
 - Font pixel kecil (tinggi ±5–7 px). Pilihan:
   - Font pixel gratis dengan lisensi bebas (cek lisensi sebelum dipakai), disimpan lokal di folder game
   - Atau bitmap font buatan sendiri (array glyph A–Z, 0–9) supaya tanpa file tambahan
 - Angka skor bergerak naik (*count-up*) saat bertambah.
 
-### 7.4 Layar
+### 8.4 Layar
 1. **Judul:** logo dari pasir yang berjatuhan, "Tekan / Tap untuk mulai", tombol Achievement
 2. **Main:** papan + panel samping
 3. **Pause:** overlay gelap transparan, Lanjut / Ulang / Keluar
-4. **Game Over:** skor, chain terbaik, total butir, achievement baru, Main Lagi
+4. **Game Over:** skor, chain terbaik, total butir, achievement baru, status rekor & peringkat mingguan, Main Lagi
 5. **Achievement:** grid ikon (terbuka/terkunci/???)
+6. **Leaderboard:** tab Minggu Ini / Sepanjang Masa, hitung mundur reset
+7. **Input Nickname:** muncul sekali saat skor pertama akan dikirim
 
 ---
 
-## 8. Game Juice & Audio
+## 9. Game Juice & Audio
 
 Urutan pengerjaan berdasarkan dampak dibanding usaha:
 
@@ -189,7 +262,7 @@ Urutan pengerjaan berdasarkan dampak dibanding usaha:
 
 ---
 
-## 9. Teknis
+## 10. Teknis
 
 | Hal | Keputusan |
 |---|---|
@@ -199,8 +272,11 @@ Urutan pengerjaan berdasarkan dampak dibanding usaha:
 | Update | Bawah → atas, arah kolom bergantian tiap tick, fixed timestep 60 tick/s (maks 4 tick per frame) |
 | Clear | BFS flood fill dari kolom kiri, 8 arah, dijalankan saat pasir diam (fallback tiap 8 tick) |
 | Audio | ZzFX (~1 KB), `AudioContext` dibuka pada interaksi pertama |
-| Simpan | `localStorage`: high score, achievement, palet terpilih |
-| Deploy | Path relatif, tanpa CDN/font eksternal, zip isi folder build |
+| Simpan lokal | `localStorage`: UUID, nickname, high score, achievement, palet terpilih, antrean skor offline |
+| Backend | PHP (`api/leaderboard.php`) + MySQL; `api/db_config.php` fallback ke SQLite (`api/database_simulasi.sqlite`) untuk tes lokal |
+| Tes lokal | `php -S localhost:8000` dari folder game (PHP 8.4 sudah terinstall) |
+| Deploy | Path relatif, tanpa CDN/font eksternal. Zip berisi `index.html`, JS/CSS, aset, `database.sql`, folder `api/` |
+| Rahasia | Password DB **tidak** di-commit: repo hanya berisi `db_config.example.php`, `db_config.php` asli masuk `.gitignore` |
 | Debug | RNG ber-seed (`?seed=123`), `window.render_game_to_text()`, `window.advanceTime(ms)` |
 
 **Kontrak antar modul** (berguna saat menggabung pekerjaan dua orang):
@@ -212,7 +288,7 @@ Urutan pengerjaan berdasarkan dampak dibanding usaha:
 
 ---
 
-## 10. Scope
+## 11. Scope
 
 ### MVP (wajib jadi 8 Desember)
 - [ ] Piece jatuh, geser, putar, soft/hard drop, preview NEXT
@@ -225,7 +301,8 @@ Urutan pengerjaan berdasarkan dampak dibanding usaha:
 - [ ] Layar judul, pause, game over
 - [ ] Kontrol keyboard + tombol sentuh
 - [ ] High score + 5 achievement MVP
-- [ ] Build statis yang sudah dites di subfolder
+- [ ] Leaderboard online mingguan & all-time + nickname + fallback offline
+- [ ] Build yang sudah dites di subfolder (termasuk API PHP)
 
 ### Nice-to-have
 - [ ] Achievement sisanya + 4 easter egg
@@ -233,26 +310,27 @@ Urutan pengerjaan berdasarkan dampak dibanding usaha:
 - [ ] Gesture swipe & tilt pakai sensor HP
 - [ ] Palet ramah buta warna
 - [ ] Musik latar
-- [ ] Daily seed
+- [ ] Seed mingguan (urutan piece sama untuk semua pemain dalam satu minggu)
+- [ ] Hitung mundur reset di leaderboard
 
 ---
 
-## 11. Roadmap (24 Nov – 8 Des 2026)
+## 12. Roadmap (24 Nov – 8 Des 2026)
 
 | Tanggal | Target |
 |---|---|
 | 24–26 Nov | Rencana Azhar & Alvin dibandingkan, GDD gabungan disepakati, setup repo |
 | 27–29 Nov | Grid pasir + renderer, piece jatuh & collision, input keyboard |
-| **30 Nov** | **Checkpoint: clear + skor + game over jalan. Upload percobaan ke gameedukasi.com** |
-| 1–2 Des | Chain/kaskade, tilt, kurva level, HUD |
-| 3–4 Des | Juice & SFX, layar menu, tombol sentuh, achievement MVP |
+| **30 Nov** | **Checkpoint: clear + skor + game over jalan. Upload percobaan ke gameedukasi.com, termasuk `database.sql` + API leaderboard sederhana** |
+| 1–2 Des | Chain/kaskade, tilt, kurva level, HUD, API leaderboard lengkap (validasi, peringkat) |
+| 3–4 Des | Juice & SFX, layar menu & leaderboard, input nickname, tombol sentuh, achievement MVP |
 | **5 Des** | **Feature freeze** — setelah ini hanya bug fix & balancing |
 | 6–7 Des | Playtest, balancing, tes di HP, build final |
 | **8 Des** | **Playable untuk dites & dikomentari** |
 
 ---
 
-## 12. Risiko
+## 13. Risiko
 
 | Risiko | Mitigasi |
 |---|---|
@@ -262,11 +340,17 @@ Urutan pengerjaan berdasarkan dampak dibanding usaha:
 | Iframe: fokus keyboard, scroll, audio | Overlay klik untuk mulai, `preventDefault` tombol panah/spasi |
 | Path rusak di hosting | Path relatif, uji build dari subfolder, upload percobaan 30 Nov |
 | Scope creep | Patuhi daftar MVP, freeze 5 Des |
+| Skor palsu dikirim ke API | Validasi batas skor di server, rate limit per UUID |
+| API/database gagal di server | Fallback leaderboard lokal + antrean kirim ulang; uji di server sejak 30 Nov |
+| Password DB bocor ke GitHub | `db_config.php` asli di `.gitignore`, repo hanya simpan versi contoh |
+| Tabel bentrok dengan game lain | Nama tabel `<NRP>_sandtilt_leaderboard` |
 
 ---
 
-## 13. Keputusan yang Masih Terbuka
+## 14. Keputusan yang Masih Terbuka
 - Judul final game
 - Vite + TypeScript atau JS murni (tunggu hasil perbandingan dengan Alvin)
 - Pembagian tugas final antara Azhar & Alvin
 - Palet warna final dan font
+- NRP siapa yang dipakai sebagai prefix tabel (tergantung akun pengunggah)
+- Kredensial database untuk game ini sama dengan game sebelumnya, atau berbeda per game?

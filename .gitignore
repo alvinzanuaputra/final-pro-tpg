@@ -1,0 +1,11 @@
+# Kredensial database asli tidak boleh masuk repo
+api/db_config.php
+api/*.sqlite
+
+# Hasil build / zip upload
+dist/
+*.zip
+
+node_modules/
+.DS_Store
+Thumbs.db

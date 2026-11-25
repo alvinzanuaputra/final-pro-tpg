@@ -14,7 +14,7 @@ export const ACHIEVEMENTS = [
   { id: 'no_tilt', tier: 'gold', name: 'TANGAN KOSONG', desc: 'LEVEL 5 TANPA MIRING' },
   { id: 'marathon', tier: 'gold', name: 'MARATON', desc: 'CAPAI LEVEL 10' },
   { id: 'quake', tier: 'secret', name: 'GOYANG DUMANG!', desc: 'MIRING KIRI-KANAN 6X DALAM 2 DETIK', hidden: true },
-  { id: 'secret_code', tier: 'secret', name: 'KODE RAHASIA', desc: 'KETIK KATA RAHASIA DI MENU', hidden: true },
+  { id: 'counter', tier: 'secret', name: 'LAWAN ARUS', desc: 'TAHAN MIRING MELAWAN PAPAN MIRING', hidden: true },
 ];
 
 export class Achievements {
@@ -48,6 +48,8 @@ export class Achievements {
       if (d.inDanger) this.unlock('close_call');
     });
     ev.on('boardClear', () => this.unlock('clean_board'));
+    // Rahasia: tahan miring berlawanan arah saat event Papan Miring (bisa di HP maupun desktop).
+    ev.on('counterForce', () => this.unlock('counter'));
     ev.on('explode', (d) => {
       this.unlock('boom');
       if (d.stones > 0) this.unlock('stone_breaker');

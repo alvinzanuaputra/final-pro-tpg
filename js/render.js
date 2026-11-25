@@ -261,7 +261,7 @@ export class Renderer {
     ctx.translate(sx, sy);
     this.ox = sx; this.oy = sy;
 
-    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'start' || (ui.screen === 'board' && !ui.fromOver)) {
+    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'start' || (ui.screen === 'board' && !ui.fromOver)) {
       this.drawRain(ctx, dt);
     } else {
       this.drawBoard(ctx, g);
@@ -287,6 +287,7 @@ export class Renderer {
       case 'over': this.drawOver(ctx, ui); break;
       case 'board': this.drawLeaderboard(ctx, ui); break;
       case 'ach': this.drawAchievements(ctx, ui); break;
+      case 'settings': this.drawSettings(ctx, ui); break;
       case 'start': this.drawStart(ctx); break;
     }
     this.drawToast(ctx, dt);
@@ -469,7 +470,7 @@ export class Renderer {
 
     if (this.k >= 2) {   // di layar sangat kecil teks bantuan tidak muat
       this.txt(ui.touch ? 'TAHAN L/R MIRING' : 'TAHAN Q/E MIRING', PX, 144, P.dim);
-      this.txt(ui.touch ? 'START JEDA' : 'P JEDA  M SUARA', PX, 151, P.dim);
+      this.txt(ui.touch ? 'MENU = JEDA' : 'P JEDA  M SUARA', PX, 151, P.dim);
     }
     this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
   }
@@ -557,12 +558,13 @@ export class Renderer {
     const P = this.pal;
     this.drawLogo(ctx, 24);
     this.txt('TETRIS PASIR YANG BISA MIRING', LW / 2, 46, P.dim, 1, 'center');
-    this.menu(ctx, ui, [['play', 'MAIN'], ['board', 'PERINGKAT'], ['ach', 'PRESTASI']], 66);
-    this.txt(`TERBAIK: ${ui.best}`, LW / 2, 118, P.accent, 1, 'center');
-    if (ui.playerName) this.txt(`PEMAIN: ${ui.playerName}`, LW / 2, 126, P.dim, 1, 'center');
+    const items = (ui.titleItems || ['play', 'board', 'ach', 'settings']).map((id) => [id, this.menuLabel(id, ui)]);
+    this.menu(ctx, ui, items, 64, 84, items.length > 3 ? 14 : 15);
+    this.txt(`TERBAIK: ${ui.best}`, LW / 2, 124, P.accent, 1, 'center');
+    if (ui.playerName) this.txt(`PEMAIN: ${ui.playerName}`, LW / 2, 132, P.dim, 1, 'center');
     if (ui.touch) {
-      this.txt('A PUTAR   B BALIK   ^ JATUH', LW / 2, 146, P.dim, 1, 'center');
-      this.txt('TAHAN L / R MIRING   START JEDA', LW / 2, 154, P.dim, 1, 'center');
+      this.txt('A PUTAR  B BALIK  ^ JATUH', LW / 2, 146, P.dim, 1, 'center');
+      this.txt('TAHAN L / R UNTUK MIRING', LW / 2, 154, P.dim, 1, 'center');
     } else {
       this.txt('<- -> GESER   ^ PUTAR   SPASI JATUH', LW / 2, 146, P.dim, 1, 'center');
       this.txt('TAHAN Q / E MIRING   P JEDA', LW / 2, 154, P.dim, 1, 'center');
@@ -572,10 +574,37 @@ export class Renderer {
     }
   }
 
+  // Label menu bersama (judul, jeda, pengaturan).
+  menuLabel(id, ui) {
+    const SOUND = { all: 'SEMUA', sfx: 'EFEK SAJA', off: 'MATI' };
+    switch (id) {
+      case 'play': return 'MAIN';
+      case 'board': return 'PERINGKAT';
+      case 'ach': return 'PRESTASI';
+      case 'settings': return 'PENGATURAN';
+      case 'resume': return 'LANJUT';
+      case 'restart': return 'ULANG';
+      case 'menu': return 'MENU UTAMA';
+      case 'back': return 'KEMBALI';
+      case 'sound': return `SUARA: ${SOUND[ui.soundMode] || 'SEMUA'}`;
+      case 'theme': return `TEMA: ${ui.theme === 'retro' ? 'RETRO' : 'KLASIK'}`;
+      default: return id.toUpperCase();
+    }
+  }
+
   drawPause(ctx, ui) {
     this.dim(ctx);
-    this.txt('JEDA', LW / 2, 48, this.pal.text, 2, 'center');
-    this.menu(ctx, ui, [['resume', 'LANJUT'], ['restart', 'ULANG'], ['menu', 'MENU']], 76);
+    this.txt('JEDA', LW / 2, 40, this.pal.text, 2, 'center');
+    const items = (ui.menuItems || ['resume', 'restart', 'menu']).map((id) => [id, this.menuLabel(id, ui)]);
+    this.menu(ctx, ui, items, 62, 96, 15);
+  }
+
+  drawSettings(ctx, ui) {
+    this.dim(ctx, 0.6);
+    this.txt('PENGATURAN', LW / 2, 30, this.pal.text, 2, 'center');
+    const items = (ui.menuItems || ['sound', 'back']).map((id) => [id, this.menuLabel(id, ui)]);
+    this.menu(ctx, ui, items, 60, 96, 15);
+    this.txt(ui.touch ? 'SAAT MAIN: MENU = JEDA & PENGATURAN' : 'M = SUARA   P = JEDA SAAT MAIN', LW / 2, 140, this.pal.dim, 1, 'center');
   }
 
   drawOver(ctx, ui) {

@@ -26,25 +26,35 @@ URL berguna untuk tes:
 
 ## Tombol sentuh
 
-Di perangkat layar sentuh, tombol muncul dengan **posisi** ala konsol genggam (gayanya tetap pixel datar seperti UI game):
-- **HP tegak:** game di atas, D-pad kiri & A/B kanan di bawahnya, L/R di pojok atas, SELECT/START paling bawah.
-- **HP miring:** D-pad kiri, game di tengah, A/B kanan, L/R di pojok atas, SELECT/START di bawah D-pad.
-- Di desktop (keyboard) tombol disembunyikan. Paksa tampil untuk tes: `?pad=1`.
+Di layar sentuh muncul tombol bergaya konsol genggam (D-pad salib, A/B bulat, bahu L/R, MENU), posisinya disesuaikan agar besar dan pas di jempol:
 
-## Kontrol
-
-| Aksi | Keyboard | Tombol sentuh |
+| Tombol | Saat bermain | Di menu |
 |---|---|---|
-| Geser | ← → / A D | D-pad ◀ ▶ |
-| Soft drop | ↓ / S | D-pad ▼ |
-| Hard drop | Spasi | D-pad ▲ |
-| Putar | ↑ / X / W | A |
-| Putar balik | Z | B |
-| Miring kiri/kanan (tahan) | Q / E | L / R |
-| Jeda | P / Esc | START |
-| Suara (semua → efek saja → mati) | M | SELECT |
-| Menu: pilih / kembali | Enter / Esc | A atau START / B |
-| Layar penuh | F | — |
+| D-pad ▲ | jatuh instan | naik |
+| D-pad ◀ ▶ | geser | ganti tab |
+| D-pad ▼ | turun pelan (tahan) | turun |
+| A | putar | pilih |
+| B | putar balik | kembali |
+| L / R (tahan) | miring kiri / kanan | — |
+| MENU | jeda + pengaturan (lanjut, ulang, suara, tema, menu utama) | kembali |
+
+- **HP tegak:** game di atas; L di atas D-pad, R di atas A/B (sejajar); MENU di tengah bawah. **HP miring:** [L + D-pad] | game | [R + A/B], MENU di bawah D-pad.
+- Ukuran D-pad & A/B menyesuaikan lebar dan tinggi layar, jadi game tetap besar di layar pendek.
+- Tinggi halaman mengikuti area yang benar-benar terlihat (`visualViewport`) plus safe area, jadi tombol tidak tertutup bilah Safari/Chrome di iOS maupun Android.
+- Desktop dengan keyboard: tombol disembunyikan (`?pad=1` untuk memaksa tampil). Layar judul punya menu **PENGATURAN** (suara, tema).
+
+## Kontrol keyboard
+
+| Aksi | Tombol |
+|---|---|
+| Geser | ← → / A D |
+| Turun pelan | ↓ / S |
+| Jatuh instan | Spasi |
+| Putar / putar balik | ↑ X W / Z |
+| Miring kiri/kanan (tahan) | Q / E |
+| Jeda | P / Esc |
+| Suara (semua → efek saja → mati) | M |
+| Layar penuh | F |
 
 ## Audio
 

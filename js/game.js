@@ -346,6 +346,13 @@ export class Game {
 
     this.updateTilt(dt, input.tilt || 0);
     this.updateEvent(dt);
+    // Melawan Papan Miring: tahan tilt ke arah sebaliknya cukup lama → event 'counterForce' (prestasi rahasia).
+    const ev = this.event;
+    if (ev && ev.phase === 'active' && ev.type === 'force' && !ev.countered
+        && this.tilt.active && this.tilt.dir === -ev.dir) {
+      ev.counter = (ev.counter || 0) + dt;
+      if (ev.counter >= CFG.COUNTER_TIME) { ev.countered = true; this.events.emit('counterForce'); }
+    }
 
     for (const a of actions) {
       if (this.state !== 'play' || !this.piece) break;

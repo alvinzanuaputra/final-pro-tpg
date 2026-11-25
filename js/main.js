@@ -24,6 +24,7 @@ const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'T
 const ach = new Achievements(events, (def) => {
   renderer.showToast(TIER_TITLE[def.tier] || 'PRESTASI!', def.name, def.tier);
   sfx.achievement(def.tier);
+  if (def.id === 'counter') setTimeout(() => renderer.showToast('HADIAH TERBUKA', 'TEMA RETRO DI MENU'), 2700);
 });
 
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
@@ -40,12 +41,12 @@ ui.soundMode = getSoundMode();
 ui.muted = ui.soundMode === 'off';
 const SOUND_LABEL = { all: 'MUSIK + EFEK', sfx: 'EFEK SAJA', off: 'MATI' };
 // musik yang diputar per layar
-const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', play: 'game', pause: 'game', over: null };
+const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', settings: 'title', play: 'game', pause: 'game', over: null };
 renderer.setPalette(store.get('palette', 'default'));
 
+// Menu dengan isi dinamis (pause, settings) dihitung di menuItems().
 const MENUS = {
-  title: ['play', 'board', 'ach'],
-  pause: ['resume', 'restart', 'menu'],
+  title: ['play', 'board', 'ach', 'settings'],
   over: ['restart', 'board', 'menu'],
   board: ['back'],
   ach: ['back'],
@@ -62,20 +63,19 @@ function uiNav(cmd) {
     sfx.click();
     return;
   }
-  const items = MENUS[ui.screen];
+  const items = menuItems(ui.screen);
   if (!items) return;
   if (cmd === 'down') { ui.focus = (ui.focus + 1) % items.length; sfx.cursor(); }
   else if (cmd === 'up') { ui.focus = (ui.focus + items.length - 1) % items.length; sfx.cursor(); }
   else if (cmd === 'ok') { sfx.click(); activate(items[ui.focus]); }
   else if (cmd === 'back') {
-    if (ui.screen === 'board' || ui.screen === 'ach') { sfx.back(); activate('back'); }
+    if (ui.screen === 'board' || ui.screen === 'ach' || ui.screen === 'settings') { sfx.back(); activate('back'); }
     else if (ui.screen === 'over') { sfx.back(); activate('menu'); }
   }
 }
 
 const KEY_NAV = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Space: 'ok', Escape: 'back' };
 
-let secret = '';
 function onUiKey(e) {
   if (nameBox.classList.contains('show')) return;
   unlockAudio();
@@ -89,10 +89,6 @@ function onUiKey(e) {
   }
   if (ui.screen === 'pause' && e.code === 'KeyP') { resume(); return; }
 
-  if (ui.screen === 'title' && e.key && e.key.length === 1) {
-    secret = (secret + e.key.toUpperCase()).slice(-5);
-    if (secret === 'PASIR') { secret = ''; toggleRetro(); return; }
-  }
   const cmd = KEY_NAV[e.code];
   if (cmd) uiNav(cmd);
 }
@@ -100,22 +96,30 @@ function onUiKey(e) {
 // ------------------------------------------------------- tombol shell
 // Saat bermain: D-pad gerak (atas = jatuh), A putar, B putar balik, L/R miring, START jeda, SELECT suara.
 // Di menu: D-pad navigasi, A/START pilih, B kembali.
+// Saat bermain: ◀ ▶ geser, TURUN pelan, JATUH instan, PUTAR / BALIK, tahan MIRING L/R, II jeda, ♪ suara.
+// Di menu: tombol di layar bisa disentuh langsung; ◀ ▶ ganti tab, TURUN pindah pilihan, PUTAR/JATUH pilih, BALIK kembali.
 const PLAY_MAP = { left: 'left', right: 'right', down: 'soft', up: 'hardDrop', a: 'rotCW', b: 'rotCCW', l: 'tiltL', r: 'tiltR' };
-const MENU_MAP = { up: 'up', down: 'down', left: 'left', right: 'right', a: 'ok', start: 'ok', b: 'back' };
+const MENU_MAP = { up: 'up', down: 'down', left: 'left', right: 'right', a: 'ok', b: 'back' };
 
 function shellPress(btn) {
   unlockAudio();
-  if (navigator.vibrate) { try { navigator.vibrate(8); } catch { /* abaikan */ } }
+  // getar halus (Android); hanya setelah sentuhan asli supaya browser tidak memblokir
+  const active = !navigator.userActivation || navigator.userActivation.hasBeenActive;
+  if (navigator.vibrate && active) { try { navigator.vibrate(8); } catch { /* abaikan */ } }
   if (nameBox.classList.contains('show')) return;
   if (ui.screen === 'start') { goTitle(); sfx.click(); return; }
-  if (btn === 'select') { toggleMute(); sfx.click(); return; }
+  // MENU: saat main → jeda (berisi pengaturan); di jeda → lanjut; di layar lain → kembali
+  if (btn === 'menu') {
+    if (ui.screen === 'play') pause();
+    else if (ui.screen === 'pause') resume();
+    else uiNav('back');
+    return;
+  }
   if (ui.screen === 'play') {
-    if (btn === 'start') { pause(); return; }
     const a = PLAY_MAP[btn];
     if (a) input.press(a);
     return;
   }
-  if (ui.screen === 'pause' && btn === 'start') { resume(); return; }
   const cmd = MENU_MAP[btn];
   if (cmd) uiNav(cmd);
 }
@@ -206,6 +210,9 @@ function activate(id) {
       loadBoard(ui.lb.tab || 'weekly');
       break;
     case 'ach': ui.ach = ach.list(); setScreen('ach'); break;
+    case 'theme': toggleTheme(); break;
+    case 'sound': toggleMute(); break;
+    case 'settings': setScreen('settings'); break;
     case 'back':
       if (ui.screen === 'board' && ui.fromOver) { setScreen('over'); ui.focus = 1; }
       else goTitle();
@@ -225,16 +232,28 @@ function toggleMute() {
   ui.soundMode = cycleSoundMode();
   ui.muted = ui.soundMode === 'off';
   store.set('soundMode', ui.soundMode);
-  renderer.showToast('SUARA', SOUND_LABEL[ui.soundMode]);
+  // di layar jeda/pengaturan labelnya sudah terlihat di menu, jadi tidak perlu toast
+  if (ui.screen !== 'pause' && ui.screen !== 'settings') renderer.showToast('SUARA', SOUND_LABEL[ui.soundMode]);
   sfx.toggle();
 }
 
-function toggleRetro() {
+// Tema retro: hadiah prestasi rahasia LAWAN ARUS (atau KODE RAHASIA versi lama).
+function retroUnlocked() {
+  return ach.unlocked.has('counter') || ach.unlocked.has('secret_code') || renderer.paletteName === 'retro';
+}
+function titleItems() { return MENUS.title; }
+// Isi menu per layar. Jeda & pengaturan memuat SUARA dan TEMA (kalau tema retro sudah terbuka).
+function menuItems(screen) {
+  const theme = retroUnlocked() ? ['theme'] : [];
+  if (screen === 'pause') return ['resume', 'restart', 'sound', ...theme, 'menu'];
+  if (screen === 'settings') return ['sound', ...theme, 'back'];
+  return MENUS[screen];
+}
+function toggleTheme() {
   const next = renderer.paletteName === 'retro' ? 'default' : 'retro';
   renderer.setPalette(next);
   store.set('palette', next);
-  ach.unlock('secret_code');
-  sfx.levelUp();
+  ui.theme = next;
 }
 
 function toggleFullscreen() {
@@ -377,19 +396,38 @@ const showPad = params.has('pad') ? params.get('pad') !== '0' : isTouch;
 ui.touch = showPad;
 consoleEl.classList.toggle('has-pad', showPad);
 
+// Tinggi yang benar-benar terlihat (tanpa bilah alamat/toolbar browser) → --app-h.
+// visualViewport paling akurat di Safari iOS & Chrome Android saat bilah muncul/hilang.
+function viewportSize() {
+  const vv = window.visualViewport;
+  return { w: vv ? vv.width : window.innerWidth, h: vv ? vv.height : window.innerHeight };
+}
+
 function layout() {
-  const portrait = window.innerHeight > window.innerWidth * 1.05;
+  const { w, h } = viewportSize();
+  document.documentElement.style.setProperty('--app-h', `${Math.round(h)}px`);
+  const portrait = h > w * 1.05;
   consoleEl.classList.toggle('portrait', portrait);
   consoleEl.classList.toggle('landscape', !portrait);
   // ukur setelah grid menyesuaikan
   canvas.style.width = '0px';
   canvas.style.height = '0px';
   const r = slotEl.getBoundingClientRect();
-  renderer.resize(r.width - 8, r.height - 8);
+  renderer.resize(r.width - 2, r.height - 2);
 }
-window.addEventListener('resize', layout);
-window.addEventListener('orientationchange', () => setTimeout(layout, 150));
-if (window.ResizeObserver) new ResizeObserver(() => layout()).observe(document.getElementById('app'));
+let layoutQueued = false;
+const queueLayout = () => {
+  if (layoutQueued) return;
+  layoutQueued = true;
+  requestAnimationFrame(() => { layoutQueued = false; layout(); });
+};
+window.addEventListener('resize', queueLayout);
+window.addEventListener('orientationchange', () => { queueLayout(); setTimeout(layout, 300); });
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', queueLayout);
+  window.visualViewport.addEventListener('scroll', () => window.scrollTo(0, 0));
+}
+if (window.ResizeObserver) new ResizeObserver(queueLayout).observe(document.getElementById('app'));
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 
 // ---------------------------------------------------------------- loop
@@ -426,6 +464,9 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   step(dt);
+  ui.titleItems = titleItems();
+  ui.menuItems = menuItems(ui.screen);
+  ui.theme = renderer.paletteName;
   renderer.draw(dt, ui);
   requestAnimationFrame(frame);
 }

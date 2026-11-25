@@ -50,6 +50,7 @@ export const CFG = {
   WIND_DURATION: 5,
   WIND_PUSH_EVERY: 0.45,
   FORCE_DURATION: 5,
+  COUNTER_TIME: 1.5,               // detik menahan miring berlawanan saat Papan Miring → prestasi rahasia
 
   DANGER_Y: 2 * BLOCK,             // pasir di atas garis ini = bahaya
   DANGER_GRACE: 1.5,

@@ -144,7 +144,7 @@ Disimpan di `localStorage`. Saat terbuka muncul toast kecil, dan beberapa achiev
 |---|---|---|
 | Gempa | Tilt kiri-kanan 6× dalam 2 detik | Layar berguncang hebat |
 | Pelangi | Semua warna aktif ter-clear dalam satu rangkaian chain | Partikel pelangi |
-| Kode Rahasia | Ketik `PASIR` di layar judul | Palet "Retro" (hijau monokrom) |
+| Lawan Arus | Saat event Papan Miring, tahan miring ke arah **berlawanan** selama 1,5 detik (bisa di HP & desktop; banner event sudah memberi petunjuk) | Membuka menu **TEMA** di layar judul: Klasik ↔ Retro (hijau monokrom) |
 | Jam Pasir | Diam 30 detik di layar judul | Pasir membentuk logo game |
 
 ---
@@ -224,12 +224,12 @@ CREATE TABLE IF NOT EXISTS `<NRP>_sandtilt_leaderboard` (
 
 | Aksi | Keyboard | Layar sentuh |
 |---|---|---|
-| Geser kiri/kanan | ← / → (atau A / D) | Tombol ◀ ▶ |
-| Putar | ↑ / X (searah jarum jam), Z (berlawanan) | Tombol ⟳ |
-| Soft drop | ↓ / S | Tombol ▼ (tahan) |
-| Hard drop | Spasi | Tombol ⤓ |
-| Tilt kiri/kanan | **Tahan** Q / E | Tahan tombol MIRING KIRI / KANAN |
-| Pause | P / Esc | Tombol ❚❚ |
+| Geser kiri/kanan | ← / → (atau A / D) | D-pad ◀ / ▶ |
+| Turun pelan | ↓ / S (tahan) | D-pad ▼ (tahan) |
+| Jatuh instan | Spasi | D-pad ▲ |
+| Putar / putar balik | ↑ / X / W, Z | A / B |
+| Tilt kiri/kanan | **Tahan** Q / E | **Tahan** L / R |
+| Jeda + pengaturan | P / Esc (M = suara) | MENU |
 | Fullscreen | F | — |
 
 - Geser dengan tombol ditahan memakai *auto-repeat* (delay ~150 ms, ulang tiap ~50 ms).
@@ -260,10 +260,11 @@ CREATE TABLE IF NOT EXISTS `<NRP>_sandtilt_leaderboard` (
 - Angka skor bergerak naik (*count-up*) saat bertambah.
 
 ### 8.4 Tombol Sentuh
-- Hanya **posisi** tombol yang meniru konsol genggam: D-pad, A, B, L, R, SELECT, START. Gayanya pixel datar sesuai UI game (latar gelap, bingkai ungu, aksen emas), tanpa badan konsol.
-- **Portrait** (HP tegak): game di atas, tombol di bawah. **Landscape** (HP miring): D-pad kiri, game di tengah, A/B kanan, L/R di pojok atas.
-- Desktop dengan keyboard: tombol disembunyikan (`?pad=1` untuk memaksa tampil).
-- Kanvas diskalakan bulat dalam piksel perangkat; di layar retina boleh sedikit diperbesar agar memenuhi ruang.
+- Bergaya konsol genggam (D-pad salib, A/B bulat emas, bahu L/R, MENU berbentuk pil), tapi **posisinya disesuaikan** untuk jempol: L tepat di atas D-pad, R tepat di atas A/B, keduanya sejajar.
+- D-pad: ▲ jatuh instan, ◀ ▶ geser, ▼ turun pelan. A putar, B putar balik. Tahan L/R untuk miring.
+- **Satu tombol MENU** menggantikan jeda/suara terpisah: saat main membuka layar JEDA berisi LANJUT, ULANG, SUARA, TEMA (jika terbuka), MENU UTAMA. Layar judul punya PENGATURAN (suara, tema).
+- **Portrait:** game di atas, kontrol di bawah. **Landscape:** [L + D-pad] | game | [R + A/B].
+- Ukuran D-pad (116–186 px) dan A/B (54–84 px) mengikuti lebar & tinggi layar; tinggi aplikasi mengikuti `visualViewport` + safe area agar tidak tertutup bilah browser.
 
 ### 8.5 Layar
 1. **Judul:** logo dari pasir yang berjatuhan, "Tekan / Tap untuk mulai", tombol Achievement

@@ -9,12 +9,11 @@
 </head>
 <body>
   <main id="app">
-    <!-- Layar game + tombol sentuh dengan tata letak ala konsol genggam.
-         .portrait (HP tegak) / .landscape (HP miring). Tanpa .has-pad (desktop) hanya layar yang tampil. -->
+    <!-- Layar game + tombol sentuh.
+         .portrait (HP tegak): game di atas, dua klaster tombol di bawah.
+         .landscape (HP miring): klaster kiri | game | klaster kanan.
+         Tanpa .has-pad (desktop + keyboard) hanya layar yang tampil. -->
     <div id="console" class="console landscape">
-      <button class="shoulder shoulder-l" data-btn="l" aria-label="Miring kiri (L)"><b>L</b><span>MIRING</span></button>
-      <button class="shoulder shoulder-r" data-btn="r" aria-label="Miring kanan (R)"><span>MIRING</span><b>R</b></button>
-
       <section class="area-screen">
           <div id="slot" class="slot">
             <canvas id="screen" aria-label="SandTilt — tetris pasir"></canvas>
@@ -34,26 +33,30 @@
           </div>
       </section>
 
-      <section class="area-left">
+      <!-- Jempol kiri: bahu L (miring kiri) + D-pad (▲ jatuh instan, ◀ ▶ geser, ▼ turun pelan) -->
+      <section class="pad pad-left" aria-label="Kontrol kiri">
+        <button class="shoulder" data-btn="l" aria-label="Miring kiri (tahan)"><b>L</b><span>MIRING</span></button>
         <div class="dpad" role="group" aria-label="Arah">
-          <button class="d d-up" data-btn="up" aria-label="Atas (jatuh)"></button>
-          <button class="d d-left" data-btn="left" aria-label="Kiri"></button>
+          <button class="d d-up" data-btn="up" aria-label="Jatuh instan"><span class="dl">JATUH</span></button>
+          <button class="d d-left" data-btn="left" aria-label="Geser kiri"></button>
           <span class="d d-mid"></span>
-          <button class="d d-right" data-btn="right" aria-label="Kanan"></button>
-          <button class="d d-down" data-btn="down" aria-label="Bawah"></button>
+          <button class="d d-right" data-btn="right" aria-label="Geser kanan"></button>
+          <button class="d d-down" data-btn="down" aria-label="Turun pelan"><span class="dl">TURUN</span></button>
         </div>
       </section>
 
-      <section class="area-right">
+      <!-- Jempol kanan: bahu R (miring kanan) + A putar / B putar balik -->
+      <section class="pad pad-right" aria-label="Kontrol kanan">
+        <button class="shoulder" data-btn="r" aria-label="Miring kanan (tahan)"><span>MIRING</span><b>R</b></button>
         <div class="ab">
-          <div class="ab-btn ab-b"><button class="round" data-btn="b" aria-label="B">B</button><span>BALIK</span></div>
-          <div class="ab-btn ab-a"><button class="round" data-btn="a" aria-label="A">A</button><span>PUTAR</span></div>
+          <div class="ab-btn ab-b"><button class="round" data-btn="b" aria-label="Putar balik">B</button><span>BALIK</span></div>
+          <div class="ab-btn ab-a"><button class="round" data-btn="a" aria-label="Putar">A</button><span>PUTAR</span></div>
         </div>
       </section>
 
-      <section class="area-sys">
-        <div class="sys-btn"><button class="pill" data-btn="select" aria-label="Select (suara)"></button><span>SELECT</span></div>
-        <div class="sys-btn"><button class="pill" data-btn="start" aria-label="Start (jeda)"></button><span>START</span></div>
+      <!-- Satu tombol MENU: jeda, suara, tema, keluar -->
+      <section class="pad-mid">
+        <div class="sys-btn"><button class="pill" data-btn="menu" aria-label="Menu (jeda & pengaturan)"></button><span>MENU</span></div>
       </section>
     </div>
   </main>

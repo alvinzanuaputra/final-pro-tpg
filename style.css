@@ -280,6 +280,19 @@ button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-
   z-index: 3;
 }
 .overlay.show { display: flex; }
+/* Modal penuh layar: di atas game & tombol sentuh, tetap di tengah walau keyboard HP muncul */
+.overlay.modal {
+  position: fixed;
+  inset: 0;
+  height: 100vh;
+  height: 100dvh;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background: rgba(8, 7, 14, 0.88);
+  z-index: 1000;
+  overscroll-behavior: contain;
+  touch-action: manipulation;
+}
+.overlay.modal .panel { max-height: 100%; overflow-y: auto; }
 .panel {
   width: min(90%, 300px);
   background: var(--panel);

@@ -296,6 +296,8 @@ export class Renderer {
     this.composite();
   }
 
+  // Gambar lapisan saat ini (grafis low-res + teksnya) ke layar, lalu kosongkan kanvas low-res
+  // agar lapisan berikutnya (dim, menu, toast) benar-benar menutupi teks di bawahnya.
   composite() {
     const out = this.ctx, k = this.k;
     out.setTransform(1, 0, 0, 1, 0, 0);
@@ -309,7 +311,16 @@ export class Renderer {
       drawText(out, t.str, t.x * k, t.y * k, t.color, t.px, t.align);
     }
     out.globalAlpha = 1;
+    this.texts = [];
+    const l = this.lctx;
+    l.save();
+    l.setTransform(1, 0, 0, 1, 0, 0);
+    l.clearRect(0, 0, LW, LH);
+    l.restore();
   }
+
+  // Mulai lapisan baru di atas semua yang sudah digambar (z-index lebih tinggi).
+  layer() { this.composite(); }
 
   updateParticles(dt, g, playing) {
     const ps = this.particles;
@@ -525,9 +536,9 @@ export class Renderer {
   }
 
   dim(ctx, a = 0.82) {
+    this.layer();
     ctx.fillStyle = `rgba(8,7,14,${a})`;
     ctx.fillRect(0, 0, LW, LH);
-    for (const t of this.texts) t.alpha *= 1 - a;
   }
 
   drawRain(ctx, dt) {
@@ -691,6 +702,7 @@ export class Renderer {
     if (!t) return;
     t.t += dt;
     if (t.t > 2.6) { this.toast = null; return; }
+    this.layer();
     const P = this.pal;
     const slide = Math.min(1, t.t * 6, (2.6 - t.t) * 6);
     const y = Math.round(-16 + 18 * slide);

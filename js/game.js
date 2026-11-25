@@ -281,7 +281,7 @@ export class Game {
     this.clearing = { cells: res.cells, t: dur, t0: dur };
     this.events.emit('clear', {
       points, grains, chain: this.chain, bridges: res.bridges, colors: res.colors,
-      cells: res.cells, inDanger: this.sand.anyAbove(CFG.DANGER_Y),
+      cells: res.cells, inDanger: this.sand.anyAbove(CFG.DANGER_Y + CFG.NEAR_MISS),
       sinceTilt: this.time - this.lastTiltAt,
     });
 

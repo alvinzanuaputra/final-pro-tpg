@@ -135,7 +135,7 @@ Disimpan di `localStorage`. Saat terbuka muncul toast kecil, dan beberapa achiev
 | Badai Pasir | Chain ×5 | Palet "Neon" | Nice |
 | Ahli Miring | Clear < 1 detik setelah tilt | — | MVP |
 | Tangan Kosong | Capai level 5 tanpa sekali pun tilt | — | Nice |
-| Nyaris! | Clear saat pasir di atas garis bahaya | — | MVP |
+| Nyaris! | Clear saat pasir sampai ≤ 1 blok di bawah garis bahaya (atau melewatinya) | — | MVP |
 | Maraton | Capai level 10 | Palet "Es" | Nice |
 | Papan Bersih | Papan kosong total setelah clear | — | MVP |
 

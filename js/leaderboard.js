@@ -62,7 +62,7 @@ export class Leaderboard {
     const week = localWeekStart();
     const runs = store.get('runs', []).filter((r) => tab === 'alltime' || r.week === week);
     const name = this.name || 'KAMU';
-    return { offline: true, tab, rows: runs.slice(0, 10).map((r) => ({ name, score: r.score, me: true })), mine: null };
+    return { offline: true, tab, rows: runs.map((r) => ({ name, score: r.score, me: true })), mine: null };
   }
 
   async get(tab) {

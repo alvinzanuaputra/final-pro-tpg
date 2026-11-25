@@ -18,6 +18,9 @@ require_once $cfg;
 
 date_default_timezone_set('Asia/Jakarta');
 
+// Jumlah baris yang dikirim ke layar peringkat (bisa digulir). Pemain di luar daftar dikirim lewat 'mine'.
+const BOARD_LIMIT = 100;
+
 function respond($data) { echo json_encode($data); exit; }
 function fail($message, $code = null) {
     $out = ['success' => false, 'message' => $message];
@@ -68,7 +71,7 @@ try {
 
         if ($tab === 'weekly') {
             $st = $pdo->prepare("SELECT player_uuid, player_name, score, max_chain, level
-                FROM $table WHERE week_start = :w ORDER BY score DESC, duration_sec ASC LIMIT 10");
+                FROM $table WHERE week_start = :w ORDER BY score DESC, duration_sec ASC LIMIT " . BOARD_LIMIT);
             $st->execute([':w' => $weekStart]);
             $rows = $st->fetchAll();
 
@@ -84,7 +87,7 @@ try {
         } else {
             $rows = $pdo->query("SELECT player_uuid, MAX(player_name) AS player_name, MAX(score) AS score,
                     MAX(max_chain) AS max_chain, MAX(level) AS level
-                FROM $table GROUP BY player_uuid ORDER BY score DESC LIMIT 10")->fetchAll();
+                FROM $table GROUP BY player_uuid ORDER BY score DESC LIMIT " . BOARD_LIMIT)->fetchAll();
 
             if ($uuid) {
                 $st = $pdo->prepare("SELECT MAX(player_name) AS player_name, MAX(score) AS score FROM $table WHERE player_uuid = :u");

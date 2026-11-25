@@ -24,7 +24,8 @@ const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'T
 const ach = new Achievements(events, (def) => {
   renderer.showToast(TIER_TITLE[def.tier] || 'PRESTASI!', def.name, def.tier);
   sfx.achievement(def.tier);
-  if (def.id === 'counter') setTimeout(() => renderer.showToast('HADIAH TERBUKA', 'TEMA RETRO DI MENU'), 2700);
+  // prestasi berhadiah (tema) → beri tahu di mana hadiahnya bisa dipakai
+  if (def.reward) setTimeout(() => renderer.showToast('HADIAH TERBUKA', `${def.reward} DI PENGATURAN`), 2700);
 });
 
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
@@ -33,7 +34,7 @@ const params = new URLSearchParams(location.search);
 const ui = {
   screen: 'start', game, focus: 0, best: store.get('best', 0), over: null,
   lb: { tab: 'weekly', rows: [], loading: false }, lbStatus: '', lbStatusColor: null,
-  ach: [], touch: isTouch, muted: false, playerName: lb.name, fromOver: false,
+  ach: [], touch: isTouch, muted: false, playerName: lb.name, fromOver: false, scroll: { pos: 0, target: 0 },
 };
 // mode suara: all (musik + efek) | sfx (efek saja) | off
 setSoundMode(store.get('soundMode', store.get('muted', false) ? 'off' : 'all'));
@@ -63,6 +64,11 @@ function uiNav(cmd) {
     sfx.click();
     return;
   }
+  // Peringkat & prestasi: ▲▼ menggulir daftar (menu hanya berisi KEMBALI).
+  if (SCROLL_STEP[ui.screen] && (cmd === 'up' || cmd === 'down')) {
+    scrollBy(cmd === 'up' ? -SCROLL_STEP[ui.screen] : SCROLL_STEP[ui.screen]);
+    return;
+  }
   const items = menuItems(ui.screen);
   if (!items) return;
   if (cmd === 'down') { ui.focus = (ui.focus + 1) % items.length; sfx.cursor(); }
@@ -76,6 +82,15 @@ function uiNav(cmd) {
 
 const KEY_NAV = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Space: 'ok', Escape: 'back' };
 
+// ------------------------------------------------------- daftar gulir
+// Satu langkah ▲▼ per layar (piksel logis = tinggi satu baris peringkat / kira-kira satu kartu prestasi).
+const SCROLL_STEP = { board: 10, ach: 20 };
+function scrollBy(d) {
+  const s = ui.scroll, max = renderer.scrollArea ? renderer.scrollArea.max : 0;
+  s.target = Math.max(0, Math.min(max, s.target + d));
+}
+const SCROLL_KEYS = { PageUp: -1, PageDown: 1, Home: -Infinity, End: Infinity };
+
 function onUiKey(e) {
   if (nameBox.classList.contains('show')) return;
   unlockAudio();
@@ -88,6 +103,12 @@ function onUiKey(e) {
     return;
   }
   if (ui.screen === 'pause' && e.code === 'KeyP') { resume(); return; }
+  if (SCROLL_STEP[ui.screen] && e.code in SCROLL_KEYS && renderer.scrollArea) {
+    e.preventDefault();
+    const dir = SCROLL_KEYS[e.code];
+    scrollBy(Number.isFinite(dir) ? dir * (renderer.scrollArea.h - 10) : dir);
+    return;
+  }
 
   const cmd = KEY_NAV[e.code];
   if (cmd) uiNav(cmd);
@@ -141,21 +162,60 @@ for (const el of consoleEl.querySelectorAll('[data-btn]')) {
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
+function toLogical(e) {
+  const r = canvas.getBoundingClientRect();
+  return [((e.clientX - r.left) / r.width) * LW, ((e.clientY - r.top) / r.height) * LH];
+}
+function inScrollArea(lx, ly) {
+  const a = renderer.scrollArea;
+  return a && lx >= a.x && lx < a.x + a.w + 4 && ly >= a.y && ly < a.y + a.h;
+}
+
+// Seret daftar dengan jari/mouse: posisi mengikuti langsung, lalu sisa kecepatan dilanjutkan sedikit.
+let drag = null;
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   unlockAudio();
   if (ui.screen === 'start') { goTitle(); return; }
-  const r = canvas.getBoundingClientRect();
-  const lx = ((e.clientX - r.left) / r.width) * LW;
-  const ly = ((e.clientY - r.top) / r.height) * LH;
+  const [lx, ly] = toLogical(e);
   const id = renderer.hit(lx, ly);
-  if (id) { sfx.click(); activate(id); }
+  if (id) { sfx.click(); activate(id); return; }
+  if (inScrollArea(lx, ly)) {
+    drag = { id: e.pointerId, y: ly, target: ui.scroll.target, lastY: ly, lastT: e.timeStamp, v: 0 };
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* abaikan */ }
+  }
 });
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const [, ly] = toLogical(e);
+  const max = renderer.scrollArea ? renderer.scrollArea.max : 0;
+  ui.scroll.target = ui.scroll.pos = Math.max(0, Math.min(max, drag.target - (ly - drag.y)));
+  const dt = e.timeStamp - drag.lastT;
+  if (dt >= 8) { drag.v = (ly - drag.lastY) / dt; drag.lastY = ly; drag.lastT = e.timeStamp; }
+});
+const endDrag = (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  if (e.timeStamp - drag.lastT < 80) scrollBy(Math.max(-80, Math.min(80, -drag.v * 180)));   // lemparan singkat
+  drag = null;
+};
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+
+canvas.addEventListener('wheel', (e) => {
+  if (!SCROLL_STEP[ui.screen] || !renderer.scrollArea) return;
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const perLogical = r.height / LH;
+  const d = e.deltaMode === 1 ? e.deltaY * 10 : e.deltaMode === 2 ? e.deltaY * renderer.scrollArea.h : e.deltaY / perLogical;
+  scrollBy(d);
+}, { passive: false });
 
 // --------------------------------------------------------------- layar
 function setScreen(s) {
   ui.screen = s;
   ui.focus = 0;
+  ui.scroll = { pos: 0, target: 0 };
+  drag = null;
   if (s in SCREEN_MUSIC && !(s === 'board' && ui.fromOver)) setMusic(SCREEN_MUSIC[s]);
   if (s !== 'play' && dangerOn) { dangerOn = false; setDanger(false); }
   setPausedMusic(s === 'pause');
@@ -224,6 +284,8 @@ function activate(id) {
 
 async function loadBoard(tab) {
   ui.lb = { tab, rows: [], loading: true };
+  // dibuka dari game over → gulir otomatis ke baris pemain sendiri
+  ui.scroll = { pos: 0, target: 0, revealMe: ui.fromOver };
   const res = await lb.get(tab);
   if (ui.lb.tab === tab) ui.lb = { ...res, loading: false };
 }
@@ -237,23 +299,33 @@ function toggleMute() {
   sfx.toggle();
 }
 
-// Tema retro: hadiah prestasi rahasia LAWAN ARUS (atau KODE RAHASIA versi lama).
-function retroUnlocked() {
-  return ach.unlocked.has('counter') || ach.unlocked.has('secret_code') || renderer.paletteName === 'retro';
+// Daftar tema (urutan = urutan saat tombol TEMA ditekan).
+// unlock: null = gratis | id prestasi = hadiah prestasi itu (ditulis juga di kartu prestasinya, lihat achievements.js).
+const THEMES = [
+  { id: 'default', name: 'KLASIK', unlock: null },
+  { id: 'senja', name: 'SENJA', unlock: null },
+  { id: 'kontras', name: 'KONTRAS', unlock: null },
+  { id: 'retro', name: 'RETRO', unlock: 'counter' },      // hadiah prestasi rahasia LAWAN ARUS
+  { id: 'neon', name: 'NEON', unlock: 'quake' },          // hadiah prestasi rahasia GOYANG DUMANG!
+  { id: 'kertas', name: 'KERTAS', unlock: 'close_call' }, // hadiah prestasi NYARIS!
+];
+function themeUnlocked(t) {
+  if (!t.unlock || renderer.paletteName === t.id) return true;
+  return ach.unlocked.has(t.unlock) || (t.id === 'retro' && ach.unlocked.has('secret_code'));  // secret_code: versi lama
 }
 function titleItems() { return MENUS.title; }
-// Isi menu per layar. Jeda & pengaturan memuat SUARA dan TEMA (kalau tema retro sudah terbuka).
+// Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
-  const theme = retroUnlocked() ? ['theme'] : [];
-  if (screen === 'pause') return ['resume', 'restart', 'sound', ...theme, 'menu'];
-  if (screen === 'settings') return ['sound', ...theme, 'back'];
+  if (screen === 'pause') return ['resume', 'restart', 'sound', 'theme', 'menu'];
+  if (screen === 'settings') return ['sound', 'theme', 'back'];
   return MENUS[screen];
 }
 function toggleTheme() {
-  const next = renderer.paletteName === 'retro' ? 'default' : 'retro';
+  const open = THEMES.filter(themeUnlocked);
+  const i = open.findIndex((t) => t.id === renderer.paletteName);
+  const next = open[(i + 1) % open.length].id;
   renderer.setPalette(next);
   store.set('palette', next);
-  ui.theme = next;
 }
 
 function toggleFullscreen() {
@@ -491,6 +563,10 @@ function frame(now) {
   ui.titleItems = titleItems();
   ui.menuItems = menuItems(ui.screen);
   ui.theme = renderer.paletteName;
+  ui.themeName = (THEMES.find((t) => t.id === ui.theme) || THEMES[0]).name;
+  // di Pengaturan: beri tahu kalau masih ada tema yang bisa dibuka lewat prestasi
+  const locked = THEMES.filter((t) => !themeUnlocked(t)).length;
+  ui.themeHint = locked ? `${locked} TEMA LAGI: HADIAH PRESTASI` : '';
   renderer.draw(dt, ui);
   requestAnimationFrame(frame);
 }

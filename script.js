@@ -63,6 +63,7 @@ const CFG = {
 
   DANGER_Y: 2 * BLOCK,             // pasir di atas garis ini = bahaya
   DANGER_GRACE: 1.5,
+  NEAR_MISS: BLOCK,                // prestasi NYARIS: clear saat pasir sampai ≤ 1 blok di bawah garis bahaya (atau lewat)
 
   CLEAR_FLASH: 0.3,                // durasi kedip + hitstop saat clear
   CLEAR_FLASH_PER_CHAIN: 0.04,
@@ -773,7 +774,7 @@ class Game {
     this.clearing = { cells: res.cells, t: dur, t0: dur };
     this.events.emit('clear', {
       points, grains, chain: this.chain, bridges: res.bridges, colors: res.colors,
-      cells: res.cells, inDanger: this.sand.anyAbove(CFG.DANGER_Y),
+      cells: res.cells, inDanger: this.sand.anyAbove(CFG.DANGER_Y + CFG.NEAR_MISS),
       sinceTilt: this.time - this.lastTiltAt,
     });
 
@@ -1027,9 +1028,45 @@ const PALETTES = {
     sand: ['#f0ffd8', '#a9e47c', '#6fbd4f', '#3f8a32', '#d2d36a'],
     speck: '#ffff9a',
   },
+  // ---- tema tambahan (gratis / hadiah prestasi, lihat THEMES di main.js) ----
+  senja: {
+    bg: '#1e1220', boardA: '#2a1826', boardB: '#2f1b2b', frame: '#7a4a5e', text: '#ffe9d6',
+    dim: '#c08a8a', accent: '#ffb347', danger: '#ff4d4d', shadow: '#120a12',
+    sand: ['#ff6b5a', '#ffc15e', '#e8dcae', '#5fb8a8', '#9a6fd0'],
+    speck: '#fff0a0', overlay: '18,10,16',
+  },
+  neon: {
+    bg: '#05050a', boardA: '#0a0a14', boardB: '#0d0d1a', frame: '#2f2f5a', text: '#f0f6ff',
+    dim: '#7a86b8', accent: '#39ff88', danger: '#ff2e6e', shadow: '#000000',
+    sand: ['#ff3ea5', '#ffe53b', '#39ff88', '#2ee6ff', '#a46bff'],
+    speck: '#ffffff', overlay: '0,0,4',
+  },
+  kertas: {   // tema terang
+    bg: '#efe6d2', boardA: '#e6dcc4', boardB: '#e0d5ba', frame: '#a8977a', text: '#3b3046',
+    dim: '#7d6f82', accent: '#d9573b', danger: '#c8283c', shadow: '#fbf6ea',
+    sand: ['#e0685a', '#e8b04a', '#5aa77f', '#5a86c8', '#9a72c2'],
+    speck: '#5a3a1a', overlay: '239,230,210',
+  },
+  kontras: {  // warna Okabe-Ito: tetap bisa dibedakan oleh penderita buta warna
+    bg: '#000000', boardA: '#0b0b0b', boardB: '#141414', frame: '#5a5a5a', text: '#ffffff',
+    dim: '#b4b4b4', accent: '#ffd400', danger: '#ff3030', shadow: '#000000',
+    sand: ['#d55e00', '#f0e442', '#009e73', '#56b4e9', '#cc79a7'],
+    speck: '#ffffff', overlay: '0,0,0',
+  },
 };
 
 const SHADES = [1.12, 1.0, 0.91, 0.82];
+// warna garis tepi kartu prestasi per tingkat trofi (emas memakai warna aksen palet)
+const TIER_COLOR = { bronze: '#d08a4c', silver: '#c9cbe0', secret: '#b45ce0' };
+// panah pixel 5x5 untuk tombol keyboard di petunjuk kontrol
+const KEY_ARROWS = {
+  left: ['..#..', '.#...', '#####', '.#...', '..#..'],
+  right: ['..#..', '...#.', '#####', '...#.', '..#..'],
+  up: ['..#..', '.###.', '#.#.#', '..#..', '..#..'],
+  down: ['..#..', '..#..', '#.#.#', '.###.', '..#..'],
+  // simbol spasi ␣ (dipusatkan di tombol panjang)
+  space: ['.....', '.....', '#.......#', '#.......#', '#########'],
+};
 const EVENT_NAMES = { quake: 'GEMPA', wind: 'ANGIN', force: 'PAPAN MIRING' };
 
 function hexToRgb(hex) {
@@ -1235,7 +1272,18 @@ class Renderer {
 
   // ---------- teks (dikumpulkan dulu, digambar terakhir di resolusi layar) ----------
   txt(str, x, y, color, size = 1, align = 'left', shadow = true) {
-    this.texts.push({ str: String(str), x: x + this.ox, y: y + this.oy, color, px: this.px(size), align, alpha: 1, shadow });
+    this.texts.push({ str: String(str), x: x + this.ox, y: y + this.oy, color, px: this.px(size), align, alpha: 1, shadow, clip: this.clipRect });
+  }
+  // Pecah teks per kata supaya lebarnya <= maxW (piksel logis).
+  wrap(str, maxW, size = 1) {
+    const lines = [];
+    let cur = '';
+    for (const word of String(str).split(' ')) {
+      const next = cur ? `${cur} ${word}` : word;
+      if (cur && this.tw(next, size) > maxW) { lines.push(cur); cur = word; } else cur = next;
+    }
+    if (cur) lines.push(cur);
+    return lines;
   }
   // ukuran titik glyph (piksel layar); size boleh pecahan untuk mengecilkan teks yang kepanjangan
   px(size = 1) { return Math.max(1, Math.floor(this.tp * size)); }
@@ -1245,10 +1293,12 @@ class Renderer {
   // ---------- gambar ----------
   draw(dt, ui) {
     this.time += dt;
+    this.dt = dt;
     const g = ui.game;
     const ctx = this.lctx, P = this.pal;
     this.buttons = [];
     this.texts = [];
+    this.scrollArea = null;
 
     const playing = ui.screen === 'play' || ui.screen === 'pause';
     const eff = playing && g.state === 'play' ? g.effectiveTilt() : 0;
@@ -1313,8 +1363,15 @@ class Renderer {
     for (const t of this.texts) {
       if (t.alpha <= 0.02) continue;
       out.globalAlpha = t.alpha;
+      if (t.clip) {
+        out.save();
+        out.beginPath();
+        out.rect(t.clip.x * k, t.clip.y * k, t.clip.w * k, t.clip.h * k);
+        out.clip();
+      }
       if (t.shadow) drawText(out, t.str, t.x * k + t.px, t.y * k + t.px, shadow, t.px, t.align);
       drawText(out, t.str, t.x * k, t.y * k, t.color, t.px, t.align);
+      if (t.clip) out.restore();
     }
     out.globalAlpha = 1;
     this.texts = [];
@@ -1541,9 +1598,83 @@ class Renderer {
     items.forEach(([id, label], k) => this.button(ctx, id, label, x, y + k * gap, w, 11, ui.focus === k));
   }
 
+  // ---------- daftar yang bisa digulir (peringkat, prestasi) ----------
+  // ui.scroll = { pos, target }: posisi gulir dalam piksel logis. main.js mengubah target
+  // (roda mouse, seret, tombol ▲▼); di sini target dibatasi lalu pos mengejarnya dengan halus.
+  // Isi di antara beginScroll/endScroll (grafis & teks) terpotong di dalam kotak x,y,w,h.
+  beginScroll(ctx, ui, x, y, w, h, contentH) {
+    const s = ui.scroll || (ui.scroll = { pos: 0, target: 0 });
+    const max = Math.max(0, Math.ceil(contentH - h));
+    s.target = Math.max(0, Math.min(max, s.target));
+    s.pos += (s.target - s.pos) * Math.min(1, (this.dt || 0) * 16);
+    if (Math.abs(s.target - s.pos) < 0.3) s.pos = s.target;
+    this.scrollArea = { x, y, w, h, max };
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    ctx.fillStyle = this.pal.bg;   // latar polos supaya hujan pasir tidak terlihat di sela baris
+    ctx.fillRect(x, y, w, h);
+    this.clipRect = { x, y, w, h };
+    return Math.round(s.pos);
+  }
+
+  // Tutup area gulir + gambar scrollbar pixel di sisi kanannya (hanya kalau isinya lebih panjang).
+  endScroll(ctx, ui) {
+    ctx.restore();
+    this.clipRect = null;
+    const a = this.scrollArea, s = ui.scroll;
+    if (!a || a.max <= 0) return;
+    const bx = a.x + a.w + 2;
+    ctx.fillStyle = this.pal.shadow;
+    ctx.fillRect(bx, a.y, 2, a.h);
+    const th = Math.max(6, Math.round((a.h * a.h) / (a.h + a.max)));
+    const ty = a.y + Math.round((a.h - th) * (s.pos / a.max));
+    ctx.fillStyle = this.pal.dim;
+    ctx.fillRect(bx, ty, 2, th);
+  }
+
+  // ---------- petunjuk kontrol: tombol keyboard pixel ----------
+  // Tombol 9 px tinggi: tepi terang bersudut terpotong, muka, dan bibir bawah gelap (kesan 3D).
+  drawKey(ctx, x, y, w, label) {
+    const P = this.pal, h = 9;
+    ctx.fillStyle = P.dim;
+    ctx.fillRect(x + 1, y, w - 2, h);
+    ctx.fillRect(x, y + 1, w, h - 2);
+    ctx.fillStyle = P.shadow;
+    ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+    ctx.fillStyle = P.frame;
+    ctx.fillRect(x + 1, y + 1, w - 2, h - 3);
+    const arrow = KEY_ARROWS[label];
+    if (arrow) {
+      ctx.fillStyle = P.text;
+      const aw = Math.max(...arrow.map((row) => row.length));
+      const ax = x + Math.floor((w - aw) / 2);
+      arrow.forEach((row, ry) => {
+        for (let rx = 0; rx < row.length; rx++) if (row[rx] === '#') ctx.fillRect(ax + rx, y + 1 + ry, 1, 1);
+      });
+    } else {
+      this.txt(label, x + w / 2, y + 1.6, P.text, 1, 'center', false);
+    }
+  }
+
+  // parts: 'TEKS' | { k: 'Q' | 'left' | 'right' | 'up' | 'down', w? } | angka (jarak tambahan). Baris dipusatkan.
+  keyHints(ctx, y, parts) {
+    const keyW = (p) => p.w || (KEY_ARROWS[p.k] ? 9 : Math.max(9, Math.ceil(this.tw(p.k)) + 5));
+    const width = (p) => (typeof p === 'number' ? p : typeof p === 'string' ? this.tw(p) : keyW(p));
+    const total = parts.reduce((s, p, i) => s + width(p) + (i && typeof p !== 'number' ? 2 : 0), 0);
+    let x = Math.round((LW - total) / 2);
+    parts.forEach((p, i) => {
+      if (i && typeof p !== 'number') x += 2;
+      if (typeof p === 'number') x += p;
+      else if (typeof p === 'string') { this.txt(p, x, y + 2.3, this.pal.dim); x += this.tw(p); }
+      else { x = Math.round(x); this.drawKey(ctx, x, y, keyW(p), p.k); x += keyW(p); }
+    });
+  }
+
   dim(ctx, a = 0.82) {
     this.layer();
-    ctx.fillStyle = `rgba(8,7,14,${a})`;
+    ctx.fillStyle = `rgba(${this.pal.overlay || '8,7,14'},${a})`;
     ctx.fillRect(0, 0, LW, LH);
   }
 
@@ -1585,14 +1716,15 @@ class Renderer {
     this.txt(`TERBAIK: ${ui.best}`, LW / 2, 124, P.accent, 1, 'center');
     if (ui.playerName) this.txt(`PEMAIN: ${ui.playerName}`, LW / 2, 132, P.dim, 1, 'center');
     if (ui.touch) {
-      this.txt('A PUTAR  B BALIK  ^ JATUH', LW / 2, 146, P.dim, 1, 'center');
-      this.txt('TAHAN L / R UNTUK MIRING', LW / 2, 154, P.dim, 1, 'center');
+      this.keyHints(ctx, 143, [{ k: 'A' }, 'PUTAR', 5, { k: 'B' }, 'BALIK', 5, { k: 'up' }, 'JATUH']);
+      this.keyHints(ctx, 155, ['TAHAN', { k: 'L' }, '/', { k: 'R' }, 'MIRING']);
     } else {
-      this.txt('<- -> GESER   ^ PUTAR   SPASI JATUH', LW / 2, 146, P.dim, 1, 'center');
-      this.txt('TAHAN Q / E MIRING   P JEDA', LW / 2, 154, P.dim, 1, 'center');
+      const space = { k: 'space', w: 25 };
+      this.keyHints(ctx, 143, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH']);
+      this.keyHints(ctx, 155, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA']);
     }
     if (ui.soundMode && ui.soundMode !== 'all') {
-      this.txt(ui.soundMode === 'off' ? 'SUARA: MATI' : 'MUSIK: MATI', LW / 2, 165, P.dim, 1, 'center');
+      this.txt(ui.soundMode === 'off' ? 'SUARA: MATI' : 'MUSIK: MATI', LW / 2, 168, P.dim, 1, 'center');
     }
   }
 
@@ -1609,7 +1741,7 @@ class Renderer {
       case 'menu': return 'MENU UTAMA';
       case 'back': return 'KEMBALI';
       case 'sound': return `SUARA: ${SOUND[ui.soundMode] || 'SEMUA'}`;
-      case 'theme': return `TEMA: ${ui.theme === 'retro' ? 'RETRO' : 'KLASIK'}`;
+      case 'theme': return `TEMA: ${ui.themeName || 'KLASIK'}`;
       default: return id.toUpperCase();
     }
   }
@@ -1626,6 +1758,7 @@ class Renderer {
     this.txt('PENGATURAN', LW / 2, 30, this.pal.text, 2, 'center');
     const items = (ui.menuItems || ['sound', 'back']).map((id) => [id, this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 60, 96, 15);
+    if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 130, this.pal.dim, 1, 'center');
     this.txt(ui.touch ? 'SAAT MAIN: MENU = JEDA & PENGATURAN' : 'M = SUARA   P = JEDA SAAT MAIN', LW / 2, 140, this.pal.dim, 1, 'center');
   }
 
@@ -1658,28 +1791,46 @@ class Renderer {
     this.button(ctx, 'tabWeekly', 'MINGGU INI', 6, 20, 72, 11, lb.tab === 'weekly');
     this.button(ctx, 'tabAll', 'SEPANJANG MASA', 82, 20, 72, 11, lb.tab === 'alltime');
 
-    let y = 37;
     if (lb.loading) {
       this.txt('MEMUAT...', LW / 2, 80, P.dim, 1, 'center');
     } else if (!lb.rows || lb.rows.length === 0) {
       this.txt('BELUM ADA SKOR', LW / 2, 70, P.dim, 1, 'center');
       this.txt('JADILAH YANG PERTAMA!', LW / 2, 80, P.dim, 1, 'center');
     } else {
-      const top = lb.rows.slice(0, 10);
-      top.forEach((r, k) => {
-        if (r.me) { ctx.fillStyle = P.frame; ctx.fillRect(6, y - 2, 148, 9); }
-        this.txt(k + 1, 17, y, k < 3 ? P.accent : P.dim, 1, 'right');
-        this.txt((r.name || '?').slice(0, 16), 22, y, k === 0 ? P.accent : P.text);
-        this.txt(r.score, 153, y, k === 0 ? P.accent : P.text, 1, 'right');
-        y += 10;
-      });
-      if (lb.mine && !top.some((r) => r.me)) {
-        y += 2;
-        ctx.fillStyle = P.frame; ctx.fillRect(6, y - 2, 148, 9);
-        this.txt(`#${lb.mine.rank}`, 21, y, P.accent, 1, 'right');
-        this.txt((lb.mine.name || 'KAMU').slice(0, 16), 24, y, P.text);
-        this.txt(lb.mine.score, 153, y, P.text, 1, 'right');
+      // Sampai 100 baris, bisa digulir. Kalau pemain di luar daftar (peringkat 100+),
+      // barisnya ditaruh langsung di bawah baris terakhir, dipisah titik-titik.
+      const LX = 6, LY = 35, LWD = 144, LHT = 110, ROW = 10, SEP = 7;
+      const rows = lb.rows;
+      const pinned = lb.mine && !rows.some((r) => r.me) ? lb.mine : null;
+      const contentH = rows.length * ROW + (pinned ? SEP + ROW : 0) - 1;
+      const s = ui.scroll || (ui.scroll = { pos: 0, target: 0 });
+      if (s.revealMe) {
+        // dibuka dari game over: gulir otomatis ke baris pemain
+        const i = rows.findIndex((r) => r.me);
+        const meY = i >= 0 ? i * ROW : pinned ? rows.length * ROW + SEP : -1;
+        if (meY >= 0) s.target = meY + ROW / 2 - LHT / 2;
+        s.revealMe = false;
       }
+      const off = this.beginScroll(ctx, ui, LX, LY, LWD, LHT, contentH);
+      const row = (rank, r, ry, k) => {
+        if (ry + ROW <= LY || ry >= LY + LHT) return;
+        if (r.me) ctx.fillStyle = P.frame;
+        else ctx.fillStyle = k % 2 ? P.boardB : P.boardA;
+        ctx.fillRect(LX, ry, LWD, ROW - 1);
+        const gold = k === 0;
+        this.txt(rank, LX + 16, ry + 2, k < 3 ? P.accent : P.dim, 1, 'right');
+        this.txt((r.name || '?').slice(0, 16), LX + 20, ry + 2, gold ? P.accent : P.text);
+        this.txt(r.score, LX + LWD - 5, ry + 2, gold ? P.accent : P.text, 1, 'right');
+      };
+      let y = LY - off;
+      rows.forEach((r, k) => { row(k + 1, r, y, k); y += ROW; });
+      if (pinned) {
+        ctx.fillStyle = P.dim;
+        for (let dx = -6; dx <= 6; dx += 6) ctx.fillRect(LX + LWD / 2 + dx, y + 2, 1, 1);
+        y += SEP;
+        row(pinned.rank, { name: pinned.name || 'KAMU', score: pinned.score, me: true }, y, pinned.rank - 1);
+      }
+      this.endScroll(ctx, ui);
     }
     const info = lb.offline ? 'OFFLINE - SKOR LOKAL' : (lb.tab === 'weekly' && lb.resetIn ? `RESET DALAM ${lb.resetIn}` : '');
     if (info) this.txt(info, LW / 2, 149, lb.offline ? P.danger : P.dim, 1, 'center');
@@ -1692,14 +1843,41 @@ class Renderer {
     this.txt('PRESTASI', LW / 2, 4, P.text, 2, 'center');
     const list = ui.ach || [];
     this.txt(`TROFI ${list.filter((a) => a.unlocked).length}/${list.length}`, LW / 2, 18, P.dim, 1, 'center');
-    let y = 27;
-    for (const a of list) {
+    // Satu kartu per prestasi: trofi di kiri, nama + deskripsi (dibungkus kalau kepanjangan).
+    // Yang sudah terbuka diberi garis warna tingkat trofinya di tepi kiri.
+    const LX = 6, LY = 27, LWD = 144, LHT = 127, GAP = 3, TX = LX + 20;
+    const cards = list.map((a) => {
       const show = a.unlocked || !a.hidden;
-      this.drawTrophy(ctx, a.unlocked ? a.tier : 'locked', 4, y - 1);
-      this.txt(show ? a.name : '???', 19, y - 0.5, a.unlocked ? P.text : P.dim);
-      this.txt(show ? a.desc : 'RAHASIA', 19, y + 4.5, P.dim);
-      y += 11;
+      // Kartu maksimal 3 baris: nama + deskripsi + hadiah. Deskripsi boleh 2 baris hanya kalau tidak ada hadiah;
+      // kalau tetap kepanjangan, deskripsi diperkecil jadi satu baris (cadangan, deskripsi idealnya <= 30 huruf).
+      const desc = show ? a.desc : 'RAHASIA', maxW = LX + LWD - 3 - TX;
+      let lines = this.wrap(desc, maxW);
+      if (lines.length > (a.reward ? 1 : 2)) lines = [{ text: desc, size: Math.min(1, maxW / this.tw(desc)) }];
+      // hadiah (mis. tema) selalu ditulis, juga untuk prestasi rahasia → pemain tahu ada yang bisa dikejar
+      if (a.reward) lines.push({ reward: `HADIAH: ${a.reward}` });
+      return { a, show, lines, h: 10 + lines.length * 7 };
+    });
+    const contentH = cards.reduce((sum, c) => sum + c.h + GAP, -GAP);
+    let y = LY - this.beginScroll(ctx, ui, LX, LY, LWD, LHT, contentH);
+    for (const { a, show, lines, h } of cards) {
+      if (y + h > LY && y < LY + LHT) {
+        ctx.fillStyle = a.unlocked ? P.boardB : P.boardA;
+        ctx.fillRect(LX, y, LWD, h);
+        if (a.unlocked) {
+          ctx.fillStyle = a.tier === 'gold' ? P.accent : TIER_COLOR[a.tier] || P.dim;
+          ctx.fillRect(LX, y, 2, h);
+        }
+        this.drawTrophy(ctx, a.unlocked ? a.tier : 'locked', LX + 5, y + Math.floor((h - 11) / 2));
+        this.txt(show ? a.name : '???', TX, y + 3, a.unlocked ? P.text : P.dim);
+        lines.forEach((ln, i) => {
+          if (ln.reward) this.txt(ln.reward, TX, y + 9.5 + i * 7, a.unlocked ? P.accent : P.text);
+          else if (ln.text) this.txt(ln.text, TX, y + 9.5 + i * 7, P.dim, ln.size);
+          else this.txt(ln, TX, y + 9.5 + i * 7, P.dim);
+        });
+      }
+      y += h + GAP;
     }
+    this.endScroll(ctx, ui);
     this.menu(ctx, { focus: 0 }, [['back', 'KEMBALI']], 160, 60);
   }
 
@@ -2105,21 +2283,22 @@ return { unlockAudio, setSoundMode, getSoundMode, cycleSoundMode, setMuted, isMu
 __mod["achievements"] = (function () {
 const { store } = __mod["util"];
 
-// Deskripsi maksimal 35 karakter supaya muat di layar.
+// Deskripsi maksimal 30 karakter supaya muat SATU baris di semua ukuran layar
+// (kartu prestasi maksimal 3 baris: nama + deskripsi + hadiah).
 // tier: bronze | silver | gold | secret → menentukan ikon trofi (assets/image/trophy-*.svg).
 const ACHIEVEMENTS = [
   { id: 'first_bridge', tier: 'bronze', name: 'JEMBATAN PERTAMA', desc: 'CLEAR PERTAMA KALI' },
   { id: 'chain3', tier: 'silver', name: 'REAKSI BERANTAI', desc: 'CAPAI CHAIN X3' },
   { id: 'chain5', tier: 'gold', name: 'BADAI PASIR', desc: 'CAPAI CHAIN X5' },
   { id: 'tilt_master', tier: 'silver', name: 'AHLI MIRING', desc: 'CLEAR < 1 DETIK SETELAH MIRING' },
-  { id: 'close_call', tier: 'silver', name: 'NYARIS!', desc: 'CLEAR SAAT PASIR LEWAT GARIS BAHAYA' },
+  { id: 'close_call', tier: 'silver', name: 'NYARIS!', desc: 'CLEAR SAAT DEKAT GARIS BAHAYA', reward: 'TEMA KERTAS' },
   { id: 'clean_board', tier: 'gold', name: 'PAPAN BERSIH', desc: 'KOSONGKAN PAPAN SETELAH CLEAR' },
   { id: 'boom', tier: 'bronze', name: 'BOOM!', desc: 'LEDAKKAN MESIU PERTAMA KALI' },
   { id: 'stone_breaker', tier: 'silver', name: 'PENGHANCUR BATU', desc: 'HANCURKAN BATU DENGAN LEDAKAN' },
   { id: 'no_tilt', tier: 'gold', name: 'TANGAN KOSONG', desc: 'LEVEL 5 TANPA MIRING' },
   { id: 'marathon', tier: 'gold', name: 'MARATON', desc: 'CAPAI LEVEL 10' },
-  { id: 'quake', tier: 'secret', name: 'GOYANG DUMANG!', desc: 'MIRING KIRI-KANAN 6X DALAM 2 DETIK', hidden: true },
-  { id: 'counter', tier: 'secret', name: 'LAWAN ARUS', desc: 'TAHAN MIRING MELAWAN PAPAN MIRING', hidden: true },
+  { id: 'quake', tier: 'secret', name: 'GOYANG DUMANG!', desc: 'MIRING KIRI-KANAN 6X < 2 DETIK', hidden: true, reward: 'TEMA NEON' },
+  { id: 'counter', tier: 'secret', name: 'LAWAN ARUS', desc: 'TAHAN MIRING LAWAN ARAH PAPAN', hidden: true, reward: 'TEMA RETRO' },
 ];
 
 class Achievements {
@@ -2247,7 +2426,7 @@ class Leaderboard {
     const week = localWeekStart();
     const runs = store.get('runs', []).filter((r) => tab === 'alltime' || r.week === week);
     const name = this.name || 'KAMU';
-    return { offline: true, tab, rows: runs.slice(0, 10).map((r) => ({ name, score: r.score, me: true })), mine: null };
+    return { offline: true, tab, rows: runs.map((r) => ({ name, score: r.score, me: true })), mine: null };
   }
 
   async get(tab) {
@@ -2340,7 +2519,8 @@ const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'T
 const ach = new Achievements(events, (def) => {
   renderer.showToast(TIER_TITLE[def.tier] || 'PRESTASI!', def.name, def.tier);
   sfx.achievement(def.tier);
-  if (def.id === 'counter') setTimeout(() => renderer.showToast('HADIAH TERBUKA', 'TEMA RETRO DI MENU'), 2700);
+  // prestasi berhadiah (tema) → beri tahu di mana hadiahnya bisa dipakai
+  if (def.reward) setTimeout(() => renderer.showToast('HADIAH TERBUKA', `${def.reward} DI PENGATURAN`), 2700);
 });
 
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
@@ -2349,7 +2529,7 @@ const params = new URLSearchParams(location.search);
 const ui = {
   screen: 'start', game, focus: 0, best: store.get('best', 0), over: null,
   lb: { tab: 'weekly', rows: [], loading: false }, lbStatus: '', lbStatusColor: null,
-  ach: [], touch: isTouch, muted: false, playerName: lb.name, fromOver: false,
+  ach: [], touch: isTouch, muted: false, playerName: lb.name, fromOver: false, scroll: { pos: 0, target: 0 },
 };
 // mode suara: all (musik + efek) | sfx (efek saja) | off
 setSoundMode(store.get('soundMode', store.get('muted', false) ? 'off' : 'all'));
@@ -2379,6 +2559,11 @@ function uiNav(cmd) {
     sfx.click();
     return;
   }
+  // Peringkat & prestasi: ▲▼ menggulir daftar (menu hanya berisi KEMBALI).
+  if (SCROLL_STEP[ui.screen] && (cmd === 'up' || cmd === 'down')) {
+    scrollBy(cmd === 'up' ? -SCROLL_STEP[ui.screen] : SCROLL_STEP[ui.screen]);
+    return;
+  }
   const items = menuItems(ui.screen);
   if (!items) return;
   if (cmd === 'down') { ui.focus = (ui.focus + 1) % items.length; sfx.cursor(); }
@@ -2392,6 +2577,15 @@ function uiNav(cmd) {
 
 const KEY_NAV = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Space: 'ok', Escape: 'back' };
 
+// ------------------------------------------------------- daftar gulir
+// Satu langkah ▲▼ per layar (piksel logis = tinggi satu baris peringkat / kira-kira satu kartu prestasi).
+const SCROLL_STEP = { board: 10, ach: 20 };
+function scrollBy(d) {
+  const s = ui.scroll, max = renderer.scrollArea ? renderer.scrollArea.max : 0;
+  s.target = Math.max(0, Math.min(max, s.target + d));
+}
+const SCROLL_KEYS = { PageUp: -1, PageDown: 1, Home: -Infinity, End: Infinity };
+
 function onUiKey(e) {
   if (nameBox.classList.contains('show')) return;
   unlockAudio();
@@ -2404,6 +2598,12 @@ function onUiKey(e) {
     return;
   }
   if (ui.screen === 'pause' && e.code === 'KeyP') { resume(); return; }
+  if (SCROLL_STEP[ui.screen] && e.code in SCROLL_KEYS && renderer.scrollArea) {
+    e.preventDefault();
+    const dir = SCROLL_KEYS[e.code];
+    scrollBy(Number.isFinite(dir) ? dir * (renderer.scrollArea.h - 10) : dir);
+    return;
+  }
 
   const cmd = KEY_NAV[e.code];
   if (cmd) uiNav(cmd);
@@ -2457,21 +2657,60 @@ for (const el of consoleEl.querySelectorAll('[data-btn]')) {
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
+function toLogical(e) {
+  const r = canvas.getBoundingClientRect();
+  return [((e.clientX - r.left) / r.width) * LW, ((e.clientY - r.top) / r.height) * LH];
+}
+function inScrollArea(lx, ly) {
+  const a = renderer.scrollArea;
+  return a && lx >= a.x && lx < a.x + a.w + 4 && ly >= a.y && ly < a.y + a.h;
+}
+
+// Seret daftar dengan jari/mouse: posisi mengikuti langsung, lalu sisa kecepatan dilanjutkan sedikit.
+let drag = null;
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   unlockAudio();
   if (ui.screen === 'start') { goTitle(); return; }
-  const r = canvas.getBoundingClientRect();
-  const lx = ((e.clientX - r.left) / r.width) * LW;
-  const ly = ((e.clientY - r.top) / r.height) * LH;
+  const [lx, ly] = toLogical(e);
   const id = renderer.hit(lx, ly);
-  if (id) { sfx.click(); activate(id); }
+  if (id) { sfx.click(); activate(id); return; }
+  if (inScrollArea(lx, ly)) {
+    drag = { id: e.pointerId, y: ly, target: ui.scroll.target, lastY: ly, lastT: e.timeStamp, v: 0 };
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* abaikan */ }
+  }
 });
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const [, ly] = toLogical(e);
+  const max = renderer.scrollArea ? renderer.scrollArea.max : 0;
+  ui.scroll.target = ui.scroll.pos = Math.max(0, Math.min(max, drag.target - (ly - drag.y)));
+  const dt = e.timeStamp - drag.lastT;
+  if (dt >= 8) { drag.v = (ly - drag.lastY) / dt; drag.lastY = ly; drag.lastT = e.timeStamp; }
+});
+const endDrag = (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  if (e.timeStamp - drag.lastT < 80) scrollBy(Math.max(-80, Math.min(80, -drag.v * 180)));   // lemparan singkat
+  drag = null;
+};
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+
+canvas.addEventListener('wheel', (e) => {
+  if (!SCROLL_STEP[ui.screen] || !renderer.scrollArea) return;
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const perLogical = r.height / LH;
+  const d = e.deltaMode === 1 ? e.deltaY * 10 : e.deltaMode === 2 ? e.deltaY * renderer.scrollArea.h : e.deltaY / perLogical;
+  scrollBy(d);
+}, { passive: false });
 
 // --------------------------------------------------------------- layar
 function setScreen(s) {
   ui.screen = s;
   ui.focus = 0;
+  ui.scroll = { pos: 0, target: 0 };
+  drag = null;
   if (s in SCREEN_MUSIC && !(s === 'board' && ui.fromOver)) setMusic(SCREEN_MUSIC[s]);
   if (s !== 'play' && dangerOn) { dangerOn = false; setDanger(false); }
   setPausedMusic(s === 'pause');
@@ -2540,6 +2779,8 @@ function activate(id) {
 
 async function loadBoard(tab) {
   ui.lb = { tab, rows: [], loading: true };
+  // dibuka dari game over → gulir otomatis ke baris pemain sendiri
+  ui.scroll = { pos: 0, target: 0, revealMe: ui.fromOver };
   const res = await lb.get(tab);
   if (ui.lb.tab === tab) ui.lb = { ...res, loading: false };
 }
@@ -2553,23 +2794,33 @@ function toggleMute() {
   sfx.toggle();
 }
 
-// Tema retro: hadiah prestasi rahasia LAWAN ARUS (atau KODE RAHASIA versi lama).
-function retroUnlocked() {
-  return ach.unlocked.has('counter') || ach.unlocked.has('secret_code') || renderer.paletteName === 'retro';
+// Daftar tema (urutan = urutan saat tombol TEMA ditekan).
+// unlock: null = gratis | id prestasi = hadiah prestasi itu (ditulis juga di kartu prestasinya, lihat achievements.js).
+const THEMES = [
+  { id: 'default', name: 'KLASIK', unlock: null },
+  { id: 'senja', name: 'SENJA', unlock: null },
+  { id: 'kontras', name: 'KONTRAS', unlock: null },
+  { id: 'retro', name: 'RETRO', unlock: 'counter' },      // hadiah prestasi rahasia LAWAN ARUS
+  { id: 'neon', name: 'NEON', unlock: 'quake' },          // hadiah prestasi rahasia GOYANG DUMANG!
+  { id: 'kertas', name: 'KERTAS', unlock: 'close_call' }, // hadiah prestasi NYARIS!
+];
+function themeUnlocked(t) {
+  if (!t.unlock || renderer.paletteName === t.id) return true;
+  return ach.unlocked.has(t.unlock) || (t.id === 'retro' && ach.unlocked.has('secret_code'));  // secret_code: versi lama
 }
 function titleItems() { return MENUS.title; }
-// Isi menu per layar. Jeda & pengaturan memuat SUARA dan TEMA (kalau tema retro sudah terbuka).
+// Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
-  const theme = retroUnlocked() ? ['theme'] : [];
-  if (screen === 'pause') return ['resume', 'restart', 'sound', ...theme, 'menu'];
-  if (screen === 'settings') return ['sound', ...theme, 'back'];
+  if (screen === 'pause') return ['resume', 'restart', 'sound', 'theme', 'menu'];
+  if (screen === 'settings') return ['sound', 'theme', 'back'];
   return MENUS[screen];
 }
 function toggleTheme() {
-  const next = renderer.paletteName === 'retro' ? 'default' : 'retro';
+  const open = THEMES.filter(themeUnlocked);
+  const i = open.findIndex((t) => t.id === renderer.paletteName);
+  const next = open[(i + 1) % open.length].id;
   renderer.setPalette(next);
   store.set('palette', next);
-  ui.theme = next;
 }
 
 function toggleFullscreen() {
@@ -2807,6 +3058,10 @@ function frame(now) {
   ui.titleItems = titleItems();
   ui.menuItems = menuItems(ui.screen);
   ui.theme = renderer.paletteName;
+  ui.themeName = (THEMES.find((t) => t.id === ui.theme) || THEMES[0]).name;
+  // di Pengaturan: beri tahu kalau masih ada tema yang bisa dibuka lewat prestasi
+  const locked = THEMES.filter((t) => !themeUnlocked(t)).length;
+  ui.themeHint = locked ? `${locked} TEMA LAGI: HADIAH PRESTASI` : '';
   renderer.draw(dt, ui);
   requestAnimationFrame(frame);
 }

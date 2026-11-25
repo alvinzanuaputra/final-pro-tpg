@@ -54,6 +54,7 @@ export const CFG = {
 
   DANGER_Y: 2 * BLOCK,             // pasir di atas garis ini = bahaya
   DANGER_GRACE: 1.5,
+  NEAR_MISS: BLOCK,                // prestasi NYARIS: clear saat pasir sampai ≤ 1 blok di bawah garis bahaya (atau lewat)
 
   CLEAR_FLASH: 0.3,                // durasi kedip + hitstop saat clear
   CLEAR_FLASH_PER_CHAIN: 0.04,

@@ -17,19 +17,6 @@
       <section class="area-screen">
           <div id="slot" class="slot">
             <canvas id="screen" aria-label="SandTilt — tetris pasir"></canvas>
-
-            <div id="namebox" class="overlay">
-              <form id="nameform" class="panel" autocomplete="off">
-                <h2>NAMA PEMAIN</h2>
-                <p>Nama ini tampil di papan peringkat.</p>
-                <input id="nameinput" maxlength="16" spellcheck="false" autocapitalize="characters" placeholder="2-16 karakter">
-                <p id="nameerr" class="err"></p>
-                <div class="btns">
-                  <button type="submit">SIMPAN</button>
-                  <button type="button" id="nameskip">LEWATI</button>
-                </div>
-              </form>
-            </div>
           </div>
       </section>
 
@@ -60,6 +47,20 @@
       </section>
     </div>
   </main>
+
+  <!-- Modal nama pemain: menutupi seluruh layar (termasuk tombol sentuh) -->
+  <div id="namebox" class="overlay modal" role="dialog" aria-modal="true" aria-labelledby="nametitle">
+    <form id="nameform" class="panel" autocomplete="off">
+      <h2 id="nametitle">NAMA PEMAIN</h2>
+      <p>Nama ini tampil di papan peringkat.</p>
+      <input id="nameinput" maxlength="16" spellcheck="false" autocapitalize="characters" enterkeyhint="done" placeholder="2-16 karakter">
+      <p id="nameerr" class="err"></p>
+      <div class="btns">
+        <button type="submit">SIMPAN</button>
+        <button type="button" id="nameskip">LEWATI</button>
+      </div>
+    </form>
+  </div>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

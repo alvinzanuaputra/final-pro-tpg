@@ -229,10 +229,12 @@ export class Renderer {
 
   // ---------- teks (dikumpulkan dulu, digambar terakhir di resolusi layar) ----------
   txt(str, x, y, color, size = 1, align = 'left', shadow = true) {
-    this.texts.push({ str: String(str), x: x + this.ox, y: y + this.oy, color, px: this.tp * size, align, alpha: 1, shadow });
+    this.texts.push({ str: String(str), x: x + this.ox, y: y + this.oy, color, px: this.px(size), align, alpha: 1, shadow });
   }
-  tw(str, size = 1) { return textWidthPx(String(str).toUpperCase(), this.tp * size) / this.k; }
-  th(size = 1) { return (7 * this.tp * size) / this.k; }
+  // ukuran titik glyph (piksel layar); size boleh pecahan untuk mengecilkan teks yang kepanjangan
+  px(size = 1) { return Math.max(1, Math.floor(this.tp * size)); }
+  tw(str, size = 1) { return textWidthPx(String(str).toUpperCase(), this.px(size)) / this.k; }
+  th(size = 1) { return (7 * this.px(size)) / this.k; }
 
   // ---------- gambar ----------
   draw(dt, ui) {
@@ -494,13 +496,16 @@ export class Renderer {
       col = P.danger;
     }
     const y = BY + 22;
-    const w = Math.ceil(Math.max(this.tw(line1), this.tw(line2))) + 8;
+    // banner tidak boleh lebih lebar dari papan: teks diperkecil kalau perlu
+    const natural = Math.max(this.tw(line1), this.tw(line2));
+    const size = Math.min(1, (W - 6) / natural);
+    const w = Math.min(W + 2, Math.ceil(Math.max(this.tw(line1, size), this.tw(line2, size))) + 8);
     const h = line2 ? 17 : 10;
     const x = Math.round(BX + (W - w) / 2);
     ctx.fillStyle = col; ctx.fillRect(x, y, w, h);
     ctx.fillStyle = P.shadow; ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
-    this.txt(line1, BX + W / 2, y + 2.5, col, 1, 'center');
-    if (line2) this.txt(line2, BX + W / 2, y + 9.5, P.text, 1, 'center');
+    this.txt(line1, BX + W / 2, y + 2.5, col, size, 'center');
+    if (line2) this.txt(line2, BX + W / 2, y + 9.5, P.text, size, 'center');
   }
 
   // ---------- layar ----------
@@ -690,7 +695,11 @@ export class Renderer {
     const slide = Math.min(1, t.t * 6, (2.6 - t.t) * 6);
     const y = Math.round(-16 + 18 * slide);
     const iconW = t.icon ? 15 : 0;
-    const w = Math.ceil(Math.max(this.tw(t.name), this.tw(t.title))) + 10 + iconW;
+    // Teks terlalu panjang untuk layar → perkecil ukurannya supaya kotak notifikasi selalu muat.
+    const maxW = LW - 6;
+    const natural = Math.max(this.tw(t.name), this.tw(t.title));
+    const size = Math.min(1, (maxW - 10 - iconW) / natural);
+    const w = Math.min(maxW, Math.ceil(Math.max(this.tw(t.name, size), this.tw(t.title, size))) + 10 + iconW);
     const x = Math.floor((LW - w) / 2);
     ctx.fillStyle = P.accent; ctx.fillRect(x, y, w, 16);
     ctx.fillStyle = P.shadow; ctx.fillRect(x + 1, y + 1, w - 2, 14);
@@ -700,7 +709,7 @@ export class Renderer {
       this.drawTrophy(ctx, t.icon, x + 3, y + 2.5 + bob);
     }
     const cx = x + iconW + (w - iconW) / 2;
-    this.txt(t.title, cx, y + 2, P.accent, 1, 'center');
-    this.txt(t.name, cx, y + 8.5, P.text, 1, 'center');
+    this.txt(t.title, cx, y + 2, P.accent, size, 'center');
+    this.txt(t.name, cx, y + 8.5, P.text, size, 'center');
   }
 }

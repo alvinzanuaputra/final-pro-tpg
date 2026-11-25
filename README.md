@@ -6,22 +6,33 @@ Rancangan lengkap ada di [docs/GDD-azhar.md](docs/GDD-azhar.md).
 
 ## Menjalankan di laptop
 
+**Paling mudah:** klik ganda `index.html`. Game langsung jalan di browser (Chrome, Safari, Edge) tanpa server; leaderboard otomatis mode offline.
+
 Dengan PHP (game + API leaderboard):
 
 ```
 php -S localhost:8000
 ```
 
-Tanpa PHP (game saja, leaderboard otomatis mode offline):
+Tanpa PHP (game saja, leaderboard offline):
 
 ```
 python3 -m http.server 8001
 ```
 
-Lalu buka http://localhost:8000 (atau :8001). Tanpa konfigurasi database, API otomatis memakai SQLite lokal (`api/database_simulasi.sqlite`).
+### Setelah mengubah kode di `js/`
+
+`index.html` memuat **`sandtilt.js`**, yaitu gabungan semua file `js/` dalam satu skrip biasa. Ini yang membuat game bisa dibuka lewat klik ganda (browser memblokir ES module di `file://`). Setiap kali ada file di `js/` yang diubah, bangun ulang:
+
+```
+node tools/build-bundle.mjs
+```
+
+Skrip yang sama juga membuat `assets/audio-data.js` (semua audio dalam base64), yang hanya dipakai saat dibuka lewat `file://` karena browser juga memblokir `fetch()` ke file lokal.
 
 URL berguna untuk tes:
 - `?seed=123` — urutan piece tetap (bisa direproduksi)
+- `?pad=1` — paksa tombol sentuh tampil di desktop
 - Di console: `render_game_to_text()`, `advanceTime(ms)`, `sandtilt.startGame()`, `sandtilt.audio()`
 
 ## Tombol sentuh
@@ -66,6 +77,7 @@ Di layar sentuh muncul tombol bergaya konsol genggam (D-pad salib, A/B bulat, ba
 
 ```
 index.html, style.css      layar game + tombol sentuh (portrait/landscape)
+sandtilt.js                gabungan js/ (otomatis, jangan diedit) → bisa dibuka lewat klik ganda
 assets/
   sfx/  music/  image/  font/   aset game (lihat assets/CREDITS.md)
 tools/                     skrip pembuat aset (SFX, musik, ikon trofi)
@@ -91,4 +103,4 @@ database.sql             tabel leaderboard (prefix NRP)
 
 1. Salin `api/db_config.example.php` menjadi `api/db_config.php`, isi `DB_HOST`, `DB_USER`, `DB_PASS` server. **Jangan commit file ini.**
 2. Pastikan prefix NRP di `database.sql` sama dengan `TABLE_LEADERBOARD` di `db_config.php`.
-3. Zip: `index.html`, `style.css`, `js/`, `api/` (tanpa file `.sqlite`), `database.sql`.
+3. Jalankan `node tools/build-bundle.mjs`, lalu zip: `index.html`, `style.css`, `sandtilt.js`, `assets/`, `api/` (tanpa file `.sqlite`), `database.sql`. Folder `js/` tidak wajib ikut (sumber kode).

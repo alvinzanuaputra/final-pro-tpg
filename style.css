@@ -34,12 +34,20 @@
   --sal: env(safe-area-inset-left, 0px);
 }
 
+@supports (height: 100dvh) {
+  :root { --app-h: 100dvh; }
+}
+
 * { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   width: 100%;
-  height: 100%;
+  /* Kunci setinggi area TERLIHAT (dvh). Dengan height:100% Safari iOS memakai tinggi layar
+     maksimal (bilah tersembunyi) → halaman sedikit lebih tinggi dari yang terlihat, bisa
+     tergulir, dan area sentuh tombol bergeser ke bawah sebesar tinggi bilah Safari. */
+  height: var(--app-h);
+  max-height: var(--app-h);
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
@@ -49,16 +57,16 @@ html, body {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
-  touch-action: manipulation;
+  touch-action: none;              /* tidak ada gestur gulir/zoom halaman */
 }
 
-/* Area aplikasi = viewport yang terlihat (diset JS), dengan fallback dvh/svh */
+/* Area aplikasi mengisi body (bukan position:fixed — di Safari iOS area sentuh elemen fixed
+   bisa tertinggal dari posisi gambarnya saat bilah alamat berubah). */
 #app {
-  position: fixed;
-  left: 0;
-  top: 0;
+  position: relative;
   width: 100%;
-  height: var(--app-h);
+  height: 100%;
+  overflow: hidden;
   display: grid;
   padding:
     calc(var(--sat) + 6px) calc(var(--sar) + 8px)
@@ -68,9 +76,6 @@ html, body {
 button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-touch-callout: none; }
 
 /* ------------------------------------------------------------ tata letak */
-@supports (height: 100dvh) {
-  :root { --app-h: 100dvh; }
-}
 
 .console {
   display: grid;

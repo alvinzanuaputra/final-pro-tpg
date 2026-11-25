@@ -23,15 +23,45 @@ let musicSrc = null, musicName = null, musicWanted = null;
 let mode = 'all';                 // 'all' | 'sfx' (musik mati) | 'off'
 let duckUntil = 0;
 
+// Dibuka lewat klik ganda (file://)? fetch() ke file lokal diblokir browser, jadi audio diambil dari
+// assets/audio-data.js (base64, dimuat sebagai <script> biasa yang tetap diizinkan di file://).
+const FILE_MODE = location.protocol === 'file:';
+
+function loadEmbedded() {
+  return new Promise((resolve, reject) => {
+    if (window.SANDTILT_AUDIO) { resolve(window.SANDTILT_AUDIO); return; }
+    const s = document.createElement('script');
+    s.src = 'assets/audio-data.js';
+    s.onload = () => (window.SANDTILT_AUDIO ? resolve(window.SANDTILT_AUDIO) : reject(new Error('audio-data kosong')));
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function b64ToBuffer(b64) {
+  const bin = atob(b64), out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
 function load() {
   if (loading) return loading;
+  const done = () => { if (musicWanted) playMusic(musicWanted, true); };
+  if (FILE_MODE) {
+    const dec = (b64) => ctx.decodeAudioData(b64ToBuffer(b64));
+    loading = loadEmbedded().then((data) => Promise.all([
+      ...SFX_NAMES.map((n) => (data.sfx[n] ? dec(data.sfx[n]).then((b) => { buffers[n] = b; }).catch(() => {}) : null)),
+      ...['title', 'game'].map((n) => (data.music[n] ? dec(data.music[n]).then((b) => { buffers['music:' + n] = b; }).catch(() => {}) : null)),
+    ]).then(() => { if (data.loops) loops = data.loops; })).catch(() => {}).then(done);
+    return loading;
+  }
   const get = async (url) => ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
   loading = Promise.all([
     ...SFX_NAMES.map((n) => get(`assets/sfx/${n}.mp3`).then((b) => { buffers[n] = b; }).catch(() => {})),
     get('assets/music/title.mp3').then((b) => { buffers['music:title'] = b; }).catch(() => {}),
     get('assets/music/game.mp3').then((b) => { buffers['music:game'] = b; }).catch(() => {}),
     fetch('assets/music/loops.json').then((r) => r.json()).then((j) => { loops = j; }).catch(() => {}),
-  ]).then(() => { if (musicWanted) playMusic(musicWanted, true); });
+  ]).then(done);
   return loading;
 }
 

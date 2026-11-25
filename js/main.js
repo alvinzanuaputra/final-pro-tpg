@@ -404,6 +404,7 @@ function viewportSize() {
 }
 
 function layout() {
+  window.scrollTo(0, 0);   // pastikan halaman tidak tergeser (area sentuh = posisi gambar)
   const { w, h } = viewportSize();
   const portrait = h > w * 1.05;
   consoleEl.classList.toggle('portrait', portrait);
@@ -426,6 +427,10 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', queueLayout);
   window.visualViewport.addEventListener('scroll', () => window.scrollTo(0, 0));
 }
+// Safari iOS kadang tetap menggulir halaman meski overflow:hidden → tolak gestur geser di luar kotak input.
+document.addEventListener('touchmove', (e) => {
+  if (!(e.target instanceof Element) || !e.target.closest('input')) e.preventDefault();
+}, { passive: false });
 if (window.ResizeObserver) new ResizeObserver(queueLayout).observe(document.getElementById('app'));
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 

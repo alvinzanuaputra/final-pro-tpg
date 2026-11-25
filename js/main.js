@@ -396,8 +396,8 @@ const showPad = params.has('pad') ? params.get('pad') !== '0' : isTouch;
 ui.touch = showPad;
 consoleEl.classList.toggle('has-pad', showPad);
 
-// Tinggi yang benar-benar terlihat (tanpa bilah alamat/toolbar browser) → --app-h.
-// visualViewport paling akurat di Safari iOS & Chrome Android saat bilah muncul/hilang.
+// Ukuran area terlihat untuk menentukan orientasi. Tinggi CSS memakai dvh (lihat style.css);
+// visualViewport dipakai agar layout dihitung ulang saat bilah Safari/Chrome muncul/hilang.
 function viewportSize() {
   const vv = window.visualViewport;
   return { w: vv ? vv.width : window.innerWidth, h: vv ? vv.height : window.innerHeight };
@@ -405,7 +405,6 @@ function viewportSize() {
 
 function layout() {
   const { w, h } = viewportSize();
-  document.documentElement.style.setProperty('--app-h', `${Math.round(h)}px`);
   const portrait = h > w * 1.05;
   consoleEl.classList.toggle('portrait', portrait);
   consoleEl.classList.toggle('landscape', !portrait);

@@ -1,6 +1,7 @@
 /* =========================================================================
    SandTilt — layar game + tombol sentuh
-   - Tinggi halaman mengikuti area yang benar-benar terlihat (visualViewport → --app-h),
+   - Tinggi halaman memakai dvh (dynamic viewport height) → mengikuti bilah Safari/Chrome yang muncul/hilang;
+     browser lama tanpa dvh jatuh ke vh,
      jadi tombol tidak tertutup bilah alamat / toolbar Safari & Chrome (iOS & Android).
    - Safe area (notch, home indicator) dihormati lewat env(safe-area-inset-*).
    - Tombol bergaya konsol genggam (D-pad salib, A/B bulat, bahu L/R, MENU pil),
@@ -26,6 +27,7 @@
   --accent: #f2c14e;
   --danger: #ff4d5e;
   --font: "KenneyMini", "Courier New", ui-monospace, monospace;
+  --app-h: 100vh;                          /* fallback browser lama */
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
@@ -56,9 +58,7 @@ html, body {
   left: 0;
   top: 0;
   width: 100%;
-  height: 100vh;
-  height: 100svh;
-  height: var(--app-h, 100dvh);
+  height: var(--app-h);
   display: grid;
   padding:
     calc(var(--sat) + 6px) calc(var(--sar) + 8px)
@@ -68,6 +68,10 @@ html, body {
 button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-touch-callout: none; }
 
 /* ------------------------------------------------------------ tata letak */
+@supports (height: 100dvh) {
+  :root { --app-h: 100dvh; }
+}
+
 .console {
   display: grid;
   width: 100%;

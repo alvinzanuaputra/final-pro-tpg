@@ -13,7 +13,7 @@ define('DB_PASS', '');
 define('DB_PORT', 3306);
 
 // Prefix tabel = NRP pengunggah (lihat database.sql)
-define('TABLE_LEADERBOARD', '5025231131_sandtilt_leaderboard');
+define('TABLE_LEADERBOARD', '5025231064_sandtilt_leaderboard');
 
 function getDBConnection()
 {

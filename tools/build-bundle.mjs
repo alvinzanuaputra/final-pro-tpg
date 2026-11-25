@@ -1,4 +1,4 @@
-// Menggabungkan semua ES module di js/ menjadi SATU skrip biasa: sandtilt.js (di root).
+// Menggabungkan semua ES module di js/ menjadi SATU skrip biasa: script.js (di root).
 // Kenapa: browser memblokir <script type="module"> dan import antar-file kalau index.html dibuka
 // lewat klik ganda (file://). Skrip biasa tidak kena aturan itu.
 //
@@ -90,7 +90,7 @@ return { ${m.exportsList.join(', ')} };
 }
 code += '})();\n';
 
-writeFileSync(join(ROOT, 'sandtilt.js'), code);
+writeFileSync(join(ROOT, 'script.js'), code);
 
 // ---- audio-data.js: semua audio sebagai base64, khusus untuk mode file:// (lihat js/audio.js)
 const sfxDir = join(ROOT, 'assets', 'sfx'), musicDir = join(ROOT, 'assets', 'music');
@@ -100,5 +100,5 @@ for (const f of readdirSync(musicDir).filter((f) => f.endsWith('.mp3'))) data.mu
 const audioJs = `/* Audio SandTilt dalam base64 — hanya dipakai saat index.html dibuka lewat file://. Dibuat oleh tools/build-bundle.mjs */\nwindow.SANDTILT_AUDIO = ${JSON.stringify(data)};\n`;
 writeFileSync(join(ROOT, 'assets', 'audio-data.js'), audioJs);
 console.log(`assets/audio-data.js: ${Object.keys(data.sfx).length} sfx + ${Object.keys(data.music).length} musik, ${(audioJs.length / 1024 / 1024).toFixed(2)} MB`);
-console.log(`sandtilt.js: ${order.length} module (${order.join(' → ')}), ${(code.length / 1024).toFixed(1)} KB`);
+console.log(`script.js: ${order.length} module (${order.join(' → ')}), ${(code.length / 1024).toFixed(1)} KB`);
 if (unused.length) console.log(`Catatan: tidak dipakai oleh main.js → ${unused.join(', ')}`);

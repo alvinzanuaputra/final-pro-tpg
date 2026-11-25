@@ -1,6 +1,7 @@
 /* =========================================================================
    SandTilt — layar game + tombol sentuh
-   - Tinggi halaman memakai dvh (dynamic viewport height) → mengikuti bilah Safari/Chrome yang muncul/hilang;
+   - Tinggi halaman = window.innerHeight (diset JS ke --app-h), yaitu jendela yang dipakai Safari untuk
+     menghitung sentuhan; dvh hanya cadangan CSS sebelum JS berjalan;
      browser lama tanpa dvh jatuh ke vh,
      jadi tombol tidak tertutup bilah alamat / toolbar Safari & Chrome (iOS & Android).
    - Safe area (notch, home indicator) dihormati lewat env(safe-area-inset-*).

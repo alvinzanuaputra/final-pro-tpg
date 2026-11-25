@@ -399,12 +399,28 @@ consoleEl.classList.toggle('has-pad', showPad);
 // Ukuran area terlihat untuk menentukan orientasi. Tinggi CSS memakai dvh (lihat style.css);
 // visualViewport dipakai agar layout dihitung ulang saat bilah Safari/Chrome muncul/hilang.
 function viewportSize() {
-  const vv = window.visualViewport;
-  return { w: vv ? vv.width : window.innerWidth, h: vv ? vv.height : window.innerHeight };
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+
+// Tinggi aplikasi = window.innerHeight (jendela LAYOUT). Safari iOS menghitung titik sentuh di
+// koordinat jendela layout; 100dvh mengikuti jendela VISUAL dan saat bilah alamat berubah ukuran
+// keduanya bisa berbeda → tombol tergambar lebih bawah dari area sentuhnya. dvh tetap jadi cadangan CSS.
+function applyAppHeight() {
+  document.documentElement.style.setProperty('--app-h', `${window.innerHeight}px`);
+}
+
+// Kembalikan halaman ke posisi 0,0. Safari bisa meninggalkan halaman tergeser setelah keyboard ditutup
+// atau bilah alamat mengecil/membesar, sehingga gambar dan area sentuh tidak sejajar.
+function resetScroll() {
+  if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+  const se = document.scrollingElement;
+  if (se && se.scrollTop) se.scrollTop = 0;
+  if (document.body.scrollTop) document.body.scrollTop = 0;
 }
 
 function layout() {
-  window.scrollTo(0, 0);   // pastikan halaman tidak tergeser (area sentuh = posisi gambar)
+  applyAppHeight();
+  resetScroll();
   const { w, h } = viewportSize();
   const portrait = h > w * 1.05;
   consoleEl.classList.toggle('portrait', portrait);
@@ -425,8 +441,12 @@ window.addEventListener('resize', queueLayout);
 window.addEventListener('orientationchange', () => { queueLayout(); setTimeout(layout, 300); });
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', queueLayout);
-  window.visualViewport.addEventListener('scroll', () => window.scrollTo(0, 0));
+  window.visualViewport.addEventListener('scroll', resetScroll);
 }
+window.addEventListener('scroll', resetScroll, { passive: true });
+window.addEventListener('pageshow', () => queueLayout());
+// setelah keyboard (kotak nama) ditutup, iOS kadang tidak mengembalikan halaman → reset & hitung ulang
+document.addEventListener('focusout', () => { setTimeout(() => { resetScroll(); layout(); }, 80); setTimeout(layout, 400); });
 // Safari iOS kadang tetap menggulir halaman meski overflow:hidden → tolak gestur geser di luar kotak input.
 document.addEventListener('touchmove', (e) => {
   if (!(e.target instanceof Element) || !e.target.closest('input')) e.preventDefault();
@@ -509,5 +529,36 @@ window.render_game_to_text = () => {
     materials: { stone: g.sand.countMat(1), gunpowder: g.sand.countMat(2), explosions: g.explosions },
   });
 };
+
+// ------------------------------------------------- debug sentuh (?debug=touch)
+// Menampilkan ukuran viewport dan titik merah di posisi sentuhan yang diterima browser. Kalau titik merah
+// tidak jatuh di bawah jari, selisihnya terlihat langsung di angka scrollY / offsetTop.
+if (params.get('debug') === 'touch') {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:4px;top:4px;z-index:99;padding:4px 6px;background:rgba(0,0,0,.75);color:#6dff8a;font:11px/1.3 monospace;white-space:pre;pointer-events:none';
+  document.body.appendChild(box);
+  const dot = document.createElement('div');
+  dot.style.cssText = 'position:fixed;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#ff3b3b;z-index:99;pointer-events:none;display:none';
+  document.body.appendChild(dot);
+  let last = '-';
+  const info = () => {
+    const vv = window.visualViewport;
+    box.textContent = [
+      `inner ${window.innerWidth}x${window.innerHeight}  dpr ${window.devicePixelRatio}`,
+      `visual ${vv ? Math.round(vv.width) + 'x' + Math.round(vv.height) : '-'}  offTop ${vv ? vv.offsetTop.toFixed(1) : '-'}  pgTop ${vv ? vv.pageTop.toFixed(1) : '-'}`,
+      `scrollY ${window.scrollY}  body ${Math.round(document.body.getBoundingClientRect().height)}  app-h ${getComputedStyle(document.documentElement).getPropertyValue('--app-h').trim()}`,
+      `sentuh terakhir: ${last}`,
+    ].join('\n');
+  };
+  document.addEventListener('pointerdown', (e) => {
+    dot.style.left = e.clientX + 'px'; dot.style.top = e.clientY + 'px'; dot.style.display = 'block';
+    const t = document.elementFromPoint(e.clientX, e.clientY);
+    const b = t && t.closest('[data-btn]');
+    last = `${Math.round(e.clientX)},${Math.round(e.clientY)} → ${b ? b.dataset.btn : (t ? t.tagName.toLowerCase() : '-')}`;
+    info();
+  }, true);
+  setInterval(info, 500);
+  info();
+}
 
 window.sandtilt = { game, ui, events, input, startGame, audio: audioDebug };

@@ -1,11 +1,11 @@
 -- =============================================================================
 -- DATABASE LEADERBOARD — SANDTILT
 -- Mata Kuliah : Teknik Pengembangan Game (TPG)
--- Prefix tabel: NRP pengunggah. Ganti 5025231131 kalau yang mengunggah berbeda,
+-- Prefix tabel: NRP pengunggah. Samakan dengan NRP akun pengunggah (sekarang 5025231064),
 -- dan samakan dengan TABLE_LEADERBOARD di api/db_config.php.
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS `5025231131_sandtilt_leaderboard` (
+CREATE TABLE IF NOT EXISTS `5025231064_sandtilt_leaderboard` (
     `id`           INT AUTO_INCREMENT PRIMARY KEY,
     `player_uuid`  VARCHAR(64) NOT NULL,
     `player_name`  VARCHAR(16) NOT NULL,

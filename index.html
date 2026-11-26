@@ -17,7 +17,7 @@
     <div id="console" class="console landscape">
       <section class="area-screen">
           <div id="slot" class="slot">
-            <canvas id="screen" aria-label="SandTilt — tetris pasir"></canvas>
+            <canvas id="screen" aria-label="SandTilt - tetris pasir"></canvas>
           </div>
       </section>
 
@@ -62,6 +62,47 @@
         <button type="button" id="nameskip">LEWATI</button>
       </div>
     </form>
+  </div>
+  <!-- Layar KREDIT (dibuka dari menu judul). HTML supaya foto jernih & link sosmed bisa diklik. -->
+  <div id="credits" class="overlay modal" role="dialog" aria-modal="true" aria-labelledby="creditstitle">
+    <div class="panel credits">
+      <h2 id="creditstitle">KREDIT</h2>
+      <p class="credits-game"><b>SANDTILT</b> &middot; tetris pasir yang bisa miring</p>
+      <p class="credits-course">Final Project Teknik Pengembangan Game (TPG) 2026</p>
+
+      <h3>PEMBUAT</h3>
+      <div class="dev">
+        <img src="assets/image/foto-alvin-zoom.jpg" alt="Foto Alvin Zanua Putra" width="72" height="72" loading="lazy">
+        <div class="dev-info">
+          <b>Alvin Zanua Putra</b>
+          <span>NRP 5025231064</span>
+          <div class="dev-links">
+            <a id="alvin-web" href="https://alvinzanua.site" target="_blank" rel="noopener">WEBSITE</a>
+            <a href="https://www.instagram.com/alvinzanuaputra" target="_blank" rel="noopener">INSTAGRAM</a>
+          </div>
+        </div>
+      </div>
+      <div class="dev">
+        <img src="assets/image/foto-azhar.jpg" alt="Foto Muhammad Azhar Aziz" width="72" height="72" loading="lazy">
+        <div class="dev-info">
+          <b>Muhammad Azhar Aziz</b>
+          <span>NRP 5025231131</span>
+          <div class="dev-links">
+            <a href="https://www.instagram.com/muhammmad_azhar_" target="_blank" rel="noopener">INSTAGRAM</a>
+          </div>
+        </div>
+      </div>
+
+      <h3>ASET</h3>
+      <ul class="credits-assets">
+        <li><b>Efek suara</b> - Kenney: Impact, Interface, Sci-fi Sounds, Digital Audio, Music Jingles (kenney.nl, CC0)</li>
+        <li><b>Font pixel</b> - Kenney Fonts (kenney.nl, CC0)</li>
+        <li><b>Soundtrack chiptune &amp; ikon trofi</b> - dibuat tim SandTilt</li>
+        <li><b>Suara angin &amp; pasir meluncur</b> - dibuat tim dengan ffmpeg</li>
+      </ul>
+
+      <div class="btns"><button type="button" id="creditsclose">KEMBALI</button></div>
+    </div>
   </div>
   <!-- sandtilt.js = gabungan semua file js/ (skrip biasa, bukan module) supaya game juga jalan
        saat index.html dibuka dengan klik ganda (file://). Setelah mengubah js/, jalankan:

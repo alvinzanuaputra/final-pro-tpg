@@ -329,3 +329,49 @@ button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-
   border-radius: 0;
 }
 .panel button[type="submit"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+
+/* ------------------------------------------------------------ layar KREDIT */
+.panel.credits {
+  width: min(94%, 420px);
+  text-align: left;
+  -webkit-overflow-scrolling: touch;
+}
+.credits h2 { text-align: center; margin-bottom: 4px; }
+.credits h3 {
+  margin: 14px 0 8px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  border-bottom: 2px solid var(--frame);
+  padding-bottom: 4px;
+}
+.credits .credits-game { margin: 0; text-align: center; color: var(--text); font-size: 12px; }
+.credits .credits-course { margin: 2px 0 0; text-align: center; font-size: 11px; }
+.credits .dev { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.credits .dev img {
+  width: 72px;
+  height: 72px;
+  flex: none;
+  object-fit: cover;
+  border: 3px solid var(--frame);
+  box-shadow: 3px 3px 0 #000;
+  background: #000;
+}
+.credits .dev-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.credits .dev-info b { color: var(--text); font-size: 13px; }
+.credits .dev-info span { color: var(--dim); font-size: 11px; }
+.credits .dev-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.credits .dev-links a {
+  padding: 4px 8px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--panel);
+  background: var(--accent);
+  text-decoration: none;
+  box-shadow: 2px 2px 0 #000;
+}
+.credits .dev-links a.down { background: var(--frame); color: var(--dim); }
+.credits .dev-links a:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 #000; }
+.credits .credits-assets { margin: 0; padding-left: 16px; color: var(--dim); font-size: 11px; line-height: 1.45; }
+.credits .credits-assets b { color: var(--text); }
+.credits .btns { margin-top: 14px; }

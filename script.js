@@ -1544,9 +1544,10 @@ class Renderer {
       ctx.fillRect(PX + (k - 1) * 6, y, 4, 4);
     }
 
-    if (this.k >= 2) {   // di layar sangat kecil teks bantuan tidak muat
-      this.txt(ui.touch ? 'TAHAN L/R MIRING' : 'TAHAN Q/E MIRING', PX, 144, P.dim);
-      this.txt(ui.touch ? 'MENU = JEDA' : 'P JEDA  M SUARA', PX, 151, P.dim);
+    // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
+    if (this.k >= 2 && !ui.touch) {   // di layar sangat kecil teks bantuan tidak muat
+      this.txt('TAHAN Q/E MIRING', PX, 144, P.dim);
+      this.txt('P JEDA  M SUARA', PX, 151, P.dim);
     }
     this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
   }
@@ -1712,13 +1713,12 @@ class Renderer {
     this.drawLogo(ctx, 24);
     this.txt('TETRIS PASIR YANG BISA MIRING', LW / 2, 46, P.dim, 1, 'center');
     const items = (ui.titleItems || ['play', 'board', 'ach', 'settings']).map((id) => [id, this.menuLabel(id, ui)]);
-    this.menu(ctx, ui, items, 64, 84, items.length > 3 ? 14 : 15);
+    // 5 item (dengan KREDIT): mulai sedikit lebih atas & lebih rapat supaya tidak menabrak teks TERBAIK
+    this.menu(ctx, ui, items, items.length > 4 ? 58 : 64, 84, items.length > 4 ? 13 : items.length > 3 ? 14 : 15);
     this.txt(`TERBAIK: ${ui.best}`, LW / 2, 124, P.accent, 1, 'center');
     if (ui.playerName) this.txt(`PEMAIN: ${ui.playerName}`, LW / 2, 132, P.dim, 1, 'center');
-    if (ui.touch) {
-      this.keyHints(ctx, 143, [{ k: 'A' }, 'PUTAR', 5, { k: 'B' }, 'BALIK', 5, { k: 'up' }, 'JATUH']);
-      this.keyHints(ctx, 155, ['TAHAN', { k: 'L' }, '/', { k: 'R' }, 'MIRING']);
-    } else {
+    // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
+    if (!ui.touch) {
       const space = { k: 'space', w: 25 };
       this.keyHints(ctx, 143, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH']);
       this.keyHints(ctx, 155, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA']);
@@ -1736,6 +1736,7 @@ class Renderer {
       case 'board': return 'PERINGKAT';
       case 'ach': return 'PRESTASI';
       case 'settings': return 'PENGATURAN';
+      case 'credits': return 'KREDIT';
       case 'resume': return 'LANJUT';
       case 'restart': return 'ULANG';
       case 'menu': return 'MENU UTAMA';
@@ -1759,7 +1760,7 @@ class Renderer {
     const items = (ui.menuItems || ['sound', 'back']).map((id) => [id, this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 60, 96, 15);
     if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 130, this.pal.dim, 1, 'center');
-    this.txt(ui.touch ? 'SAAT MAIN: MENU = JEDA & PENGATURAN' : 'M = SUARA   P = JEDA SAAT MAIN', LW / 2, 140, this.pal.dim, 1, 'center');
+    if (!ui.touch) this.txt('M = SUARA   P = JEDA SAAT MAIN', LW / 2, 140, this.pal.dim, 1, 'center');
   }
 
   drawOver(ctx, ui) {
@@ -2506,6 +2507,7 @@ const canvas = document.getElementById('screen');
 const consoleEl = document.getElementById('console');
 const slotEl = document.getElementById('slot');
 const nameBox = document.getElementById('namebox');
+const creditsBox = document.getElementById('credits');
 const nameForm = document.getElementById('nameform');
 const nameInput = document.getElementById('nameinput');
 const nameErr = document.getElementById('nameerr');
@@ -2542,7 +2544,7 @@ renderer.setPalette(store.get('palette', 'default'));
 
 // Menu dengan isi dinamis (pause, settings) dihitung di menuItems().
 const MENUS = {
-  title: ['play', 'board', 'ach', 'settings'],
+  title: ['play', 'board', 'ach', 'settings', 'credits'],
   over: ['restart', 'board', 'menu'],
   board: ['back'],
   ach: ['back'],
@@ -2588,6 +2590,10 @@ const SCROLL_KEYS = { PageUp: -1, PageDown: 1, Home: -Infinity, End: Infinity };
 
 function onUiKey(e) {
   if (nameBox.classList.contains('show')) return;
+  if (creditsOpen()) {
+    if (e.code === 'Escape' || e.code === 'Backspace' || e.code === 'Enter') { e.preventDefault(); closeCredits(); }
+    return;
+  }
   unlockAudio();
   if (ui.screen === 'start') { goTitle(); return; }
   if (e.code === 'KeyM') { toggleMute(); return; }
@@ -2623,6 +2629,7 @@ function shellPress(btn) {
   const active = !navigator.userActivation || navigator.userActivation.hasBeenActive;
   if (navigator.vibrate && active) { try { navigator.vibrate(8); } catch { /* abaikan */ } }
   if (nameBox.classList.contains('show')) return;
+  if (creditsOpen()) { if (btn === 'b' || btn === 'menu' || btn === 'a') closeCredits(); return; }
   if (ui.screen === 'start') { goTitle(); sfx.click(); return; }
   // MENU: saat main → jeda (berisi pengaturan); di jeda → lanjut; di layar lain → kembali
   if (btn === 'menu') {
@@ -2768,6 +2775,7 @@ function activate(id) {
     case 'theme': toggleTheme(); break;
     case 'sound': toggleMute(); break;
     case 'settings': setScreen('settings'); break;
+    case 'credits': openCredits(); break;
     case 'back':
       if (ui.screen === 'board' && ui.fromOver) { setScreen('over'); ui.focus = 1; }
       else goTitle();
@@ -2808,6 +2816,42 @@ function themeUnlocked(t) {
   if (!t.unlock || renderer.paletteName === t.id) return true;
   return ach.unlocked.has(t.unlock) || (t.id === 'retro' && ach.unlocked.has('secret_code'));  // secret_code: versi lama
 }
+// ------------------------------------------------------------- KREDIT
+// Modal HTML (lihat index.html #credits): foto & link sosmed pembuat, mata kuliah, sumber aset.
+function creditsOpen() { return creditsBox.classList.contains('show'); }
+function openCredits() {
+  creditsBox.classList.add('show');
+  creditsBox.querySelector('.panel').scrollTop = 0;
+  input.releaseAll();
+  checkAlvinWebsite();
+  setTimeout(() => document.getElementById('creditsclose').focus({ preventScroll: true }), 50);
+}
+function closeCredits() {
+  creditsBox.classList.remove('show');
+  sfx.back();
+  ui.focus = MENUS.title.indexOf('credits');
+}
+document.getElementById('creditsclose').addEventListener('click', closeCredits);
+creditsBox.addEventListener('click', (e) => { if (e.target === creditsBox) closeCredits(); });
+
+// Website Alvin dicek saat KREDIT dibuka. Kalau tidak bisa dihubungi, tombolnya ditandai offline
+// dan Instagram dipindah ke depan sebagai alternatif.
+let alvinChecked = false;
+function checkAlvinWebsite() {
+  if (alvinChecked) return;
+  alvinChecked = true;
+  const web = document.getElementById('alvin-web');
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  fetch('https://alvinzanua.site', { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal })
+    .catch(() => {
+      web.classList.add('down');
+      web.textContent = 'WEBSITE (OFFLINE)';
+      web.parentElement.appendChild(web); // Instagram jadi pilihan pertama
+    })
+    .finally(() => clearTimeout(timer));
+}
+
 function titleItems() { return MENUS.title; }
 // Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
@@ -3016,7 +3060,7 @@ window.addEventListener('pageshow', () => queueLayout());
 document.addEventListener('focusout', () => { setTimeout(() => { resetScroll(); layout(); }, 80); setTimeout(layout, 400); });
 // Safari iOS kadang tetap menggulir halaman meski overflow:hidden → tolak gestur geser di luar kotak input.
 document.addEventListener('touchmove', (e) => {
-  if (!(e.target instanceof Element) || !e.target.closest('input')) e.preventDefault();
+  if (!(e.target instanceof Element) || !e.target.closest('input, .credits')) e.preventDefault();
 }, { passive: false });
 if (window.ResizeObserver) new ResizeObserver(queueLayout).observe(document.getElementById('app'));
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });

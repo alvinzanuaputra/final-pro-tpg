@@ -17,6 +17,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const GAME_ROOT = resolve(HERE, '..', '..');            // root repo (index.html game)
 const OUT_ROOT = resolve(HERE, '..', 'public', 'footage');
 const FPS = 60;
+const ALL_ACH = ['first_bridge', 'chain3', 'chain5', 'tilt_master', 'close_call', 'clean_board', 'boom', 'stone_breaker',
+  'no_tilt', 'marathon', 'quake', 'counter'];
+export const DEFAULT_STORAGE = { ach: ALL_ACH, seenMats: [1, 2], best: 152340 };
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.mp3': 'audio/mpeg',
   '.json': 'application/json', '.ttf': 'font/ttf', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml' };
@@ -45,15 +48,19 @@ async function captureShot(browser, base, shot) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   await page.clock.install({ time: 0 });                 // jam dibekukan: loop rAF game tidak jalan sendiri
   await page.addInitScript(SEEDED_RANDOM);
-  if (shot.storage) await page.addInitScript((kv) => { for (const k in kv) localStorage.setItem(k, kv[k]); }, shot.storage);
+  await page.addInitScript({ path: join(HERE, 'scenario.js') });
+  // Pemain "berpengalaman": semua trofi sudah terbuka (tidak ada toast mengganggu), material sudah dikenal,
+  // skor terbaik realistis. Shot boleh menimpa lewat shot.storage (mis. menyisakan satu trofi untuk dimunculkan).
+  const storage = { ...DEFAULT_STORAGE, ...(shot.storage || {}) };
+  await page.addInitScript((kv) => { for (const k in kv) localStorage.setItem('sandtilt.' + k, JSON.stringify(kv[k])); }, storage);
   await page.goto(`${base}/?seed=${shot.seed}&lb=off${shot.query || ''}`);
   await page.waitForFunction(() => window.sandtilt && window.advanceTime);
-  await page.evaluate(() => window.sandtilt.startGame());
+  await page.evaluate(() => { window.sandtilt.startGame(); window.__hookEvents(); });
   if (shot.setup) await page.evaluate(shot.setup);
+  await page.evaluate(() => { window.__EV.length = 0; });
 
   const dir = join(OUT_ROOT, shot.name);
-  await rm(dir, { recursive: true, force: true });
-  await mkdir(dir, { recursive: true });
+  if (!DRY) { await rm(dir, { recursive: true, force: true }); await mkdir(dir, { recursive: true }); }
 
   // Jadwal aksi: [frame, 'tap'|'down'|'up', KeyCode] -> dikelompokkan per frame
   const byFrame = new Map();
@@ -74,24 +81,29 @@ async function captureShot(browser, base, shot) {
       }
       window.advanceTime(dt);
       const st = JSON.parse(window.render_game_to_text());
+      const ev = window.__EV.splice(0);
       return { png: grab ? document.getElementById('screen').toDataURL('image/png') : null,
         st: { score: st.score, chain: st.chain, clears: st.clears, level: st.level, grains: st.grains,
-          explosions: st.materials.explosions, state: st.state, clearing: st.clearing } };
-    }, { acts, dt: 1000 / FPS, grab: f >= shot.warmup });
-    if (res.png) {
-      await writeFile(join(dir, `${String(n).padStart(4, '0')}.png`), Buffer.from(res.png.split(',')[1], 'base64'));
+          explosions: st.materials.explosions, state: st.state, clearing: st.clearing, ev } };
+    }, { acts, dt: 1000 / FPS, grab: !DRY && f >= shot.warmup });
+    if (f >= shot.warmup) {
+      if (res.png) await writeFile(join(dir, `${String(n).padStart(4, '0')}.png`), Buffer.from(res.png.split(',')[1], 'base64'));
       log.push(res.st);
       n++;
     }
   }
-  await writeFile(join(dir, 'meta.json'), JSON.stringify({ name: shot.name, fps: FPS, frames: n,
+  if (!DRY) await writeFile(join(dir, 'meta.json'), JSON.stringify({ name: shot.name, fps: FPS, frames: n,
     width: 800, height: 880, log }, null, 0));
   await page.close();
   const last = log[log.length - 1] || {};
-  console.log(`  ${shot.name}: ${n} frame -> public/footage/${shot.name}/  (skor ${last.score}, clear ${last.clears}, chain max ${Math.max(0, ...log.map((s) => s.chain || 0))})`);
+  const evs = {};
+  log.forEach((st, i) => st.ev.forEach(([name, d]) => { if (!['move', 'rotate', 'spawn'].includes(name)) (evs[name] ||= []).push(i + (d.chain ? '(x' + d.chain + ')' : '')); }));
+  console.log(`  ${shot.name}${DRY ? ' [dry]' : ''}: ${n} frame  (skor ${last.score}, clear ${last.clears}, chain max ${Math.max(0, ...log.map((s) => s.chain || 0))}, ledakan ${last.explosions}, state ${last.state})`);
+  for (const k in evs) console.log(`     ${k}: ${evs[k].slice(0, 12).join(' ')}${evs[k].length > 12 ? ' ...' : ''}`);
 }
 
-const only = process.argv[2];
+const DRY = process.argv.includes('--dry');
+const only = process.argv.slice(2).find((a) => !a.startsWith('--'));
 const shots = SHOTS.filter((s) => !only || s.name === only);
 if (!shots.length) { console.error(`Shot "${only}" tidak ada. Pilihan: ${SHOTS.map((s) => s.name).join(', ')}`); process.exit(1); }
 

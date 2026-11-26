@@ -66,15 +66,15 @@ Setiap piece punya **warna** (3–5 warna aktif) **dan material**. Material khus
 | Material | Mulai muncul | Peluang | Tampilan | Perilaku |
 |---|---|---|---|---|
 | **Pasir** | — | sisanya | Butiran warna | Longsor diagonal, ikut tilt, gempa, dan papan miring. |
-| **Mesiu** | Level 2 | ±9% piece | Warna sangat gelap + bintik api oranye | Longsor seperti pasir dan **ikut jembatan warnanya**. Kalau **ikut di-clear atau bersentuhan dengan butir yang di-clear**, mesiu menyala, api merambat ke seluruh mesiu yang tersambung (warna apa pun), lalu **meledak**: semua butir dalam radius 7 butir ikut hancur, termasuk batu. |
-| **Batu** | Level 3 | ±7% piece | Blok warna gelap padat: tepi atas terang, tepi bawah gelap, retakan | **Benda kaku**: setiap kelompok batu yang menyentuh bergerak **utuh sebagai satu blok** (bentuknya tidak pernah hancur atau tercerai). Jatuh lurus; kalau tertahan dan tanah miring, **meluncur** diagonal lalu ke samping mengikuti kemiringan. Tidak terdorong gempa. **Ikut jembatan warnanya** (batu merah menyambung jembatan merah). Selain lewat jembatan, hanya hancur oleh ledakan mesiu. |
+| **Mesiu** | Level 2 | 8% → 14% (lihat 4.2) | Warna sangat gelap + bintik api oranye | Longsor seperti pasir dan **ikut jembatan warnanya**. Kalau **ikut di-clear atau bersentuhan dengan butir yang di-clear**, mesiu menyala, api merambat ke seluruh mesiu yang tersambung (warna apa pun), lalu **meledak**: semua butir dalam radius 7 butir ikut hancur, termasuk batu. |
+| **Batu** | Level 7 | 3% → maks 10% (lihat 4.2) | Blok warna gelap padat: tepi atas terang, tepi bawah gelap, retakan | **Benda kaku**: setiap kelompok batu yang menyentuh bergerak **utuh sebagai satu blok** (bentuknya tidak pernah hancur atau tercerai). Jatuh lurus; kalau tertahan dan tanah miring, **meluncur** diagonal lalu ke samping mengikuti kemiringan. Tidak terdorong gempa. **Ikut jembatan warnanya** (batu merah menyambung jembatan merah). Selain lewat jembatan, hanya hancur oleh ledakan mesiu. |
 
 - Butir yang ikut hancur karena ledakan dihitung ke skor clear dengan multiplier yang sama.
 - Efek: layar bergetar kuat, kilat, percikan api oranye, teks "LEDAKAN!" / "BATU HANCUR!", dan bunyi ledakan.
 - Prestasi baru: **BOOM!** (ledakan pertama) dan **PENGHANCUR BATU** (batu hancur oleh ledakan).
 
 ### 3.6 Event Pengganggu
-- Event pertama muncul 35–50 detik setelah mulai, berikutnya tiap 45–75 detik (jeda makin pendek 5% per level, minimal setengahnya).
+- Event pertama muncul 35–50 detik setelah mulai. Jeda berikutnya mengikuti tabel per level di 4.2: sangat rapat di **level boss**, longgar di **level lembah**.
 - Selalu ada **peringatan 3 detik** (banner + bunyi bip) sebelum event aktif.
 
 | Event | Durasi | Efek | Cara menanggapi |
@@ -107,19 +107,37 @@ M_multi = 1 + 0,5 × (jumlah jembatan bersamaan − 1)
 - Contoh: 900 butir, level 3, chain ke-2 → 900 × 1,2 × 2 = **2.160**.
 
 ### 4.2 Level & Kesulitan
-| Level | Interval jatuh piece | Jumlah warna |
-|---|---|---|
-| 1 | 800 ms | 3 |
-| 3 | ~578 ms | **4** |
-| 6 | ~355 ms | **5** |
-| 10+ | ~185 ms (min 80 ms) | 5 |
+- Naik level setiap **5 clear** (bukan skor), mirip Tetris modern yang naik tiap 10 baris. Dua jembatan sekaligus = 2 clear.
+- Kurvanya **bergerigi**, bukan naik terus: setiap **level ke-5 adalah level boss** (event jauh lebih sering, kecepatan tidak ikut naik), dan level sesudahnya adalah **lembah** (kecepatan turun sedikit, event jarang) supaya pemain sempat bernapas.
+- Di level boss, angka LEVEL di panel samping berwarna khusus (warna `boss` di tiap tema; kontras ≥ 5:1 dengan latar dan berbeda dari warna teks & aksen). Tidak ada banner.
+- Kecepatan berhenti di **0,15 detik/baris** (level 27). Setelah itu kesulitan tetap naik pelan lewat event yang makin rapat dan batu yang makin sering.
+- Peluang batu & mesiu di tabel adalah peluang **nyata** per piece (kode sudah mengoreksi aturan "tidak dua material khusus berturut-turut").
 
-- Interval = `max(80, 800 × 0,85^(level−1))` ms.
-- Naik level setiap **5 clear**.
-- **Ruang napas:** saat warna baru masuk, kecepatan diturunkan setara 1 level selama 30 detik.
+| Level | Tipe | Jatuh (dtk/baris) | Warna | Batu | Mesiu | Jeda event (dtk) |
+|---|---|---|---|---|---|---|
+| 1 | normal | 0,80 | 3 | – | – | 35–50 (pertama) |
+| 2 | normal | 0,72 | 3 | – | 8% | 45–75 |
+| 3 | normal | 0,65 | 3 | – | 8% | 45–70 |
+| 4 | normal | 0,58 | **4** | – | 8% | 40–65 |
+| 5 | **boss** | 0,58 | 4 | – | 8% | **20–30** |
+| 6 | lembah | 0,55 | 4 | – | 10% | 60–90 |
+| 7–9 | normal | 0,50 → 0,41 | 4 | **3%** | 10% | 40–60 |
+| 10 | **boss** | 0,41 | 4 | 3% | 10% | **18–25** |
+| 11 | lembah | 0,38 | 4 | 3% | 12% | 60–90 |
+| 12–14 | normal | 0,35 → 0,29 | **5** | 4% | 12% | 35–50 |
+| 15 | **boss** | 0,29 | 5 | 4% | 12% | **15–22** |
+| 16 | lembah | 0,27 | 5 | 4% | 14% | 60–90 |
+| 17–19 | normal | 0,25 → 0,21 | 5 | 4% | 14% | 30–45 |
+| 20 | **boss** | 0,21 | 5 | 4% | 14% | **12–18** |
+| 21–25 | pola sama | 0,20 → 0,17 | 5 | 5% | 14% | normal 28–40, boss 10–16, lembah 60–90 |
+| 26+ | pola sama | turun 0,01/level, **min 0,15** (level 27) | 5 | +1% tiap 10 level (L31 6% … **L71+ 10%**) | 14% | tiap 5 level makin rapat: normal min 16–28, boss min 6–12, lembah min 35–65 |
+
+- **Ruang napas:** saat warna baru masuk (level 4 dan 12), kecepatan memakai angka level sebelumnya selama 30 detik.
+- Saat masuk level boss, hitung mundur event langsung dipendekkan; saat masuk lembah, langsung dipanjangkan.
+- **Mode uji** (tidak menyimpan skor/prestasi): `?jatuh=0.15` memaksa kecepatan, `?level=12` mulai di level tertentu.
 
 ### 4.3 Angka yang Bisa Di-tuning (semua di `config`)
-`BLOCK_SIZE`, `CONNECT_8`, `TILT_DURATION`, `TILT_CHARGES`, `TILT_RECHARGE`, `DANGER_GRACE`, `CLEARS_PER_LEVEL`, rumus kecepatan, dan jumlah warna per level.
+`BLOCK_SIZE`, `CONNECT_8`, `TILT_DURATION`, `TILT_CHARGES`, `TILT_RECHARGE`, `DANGER_GRACE`, `CLEARS_PER_LEVEL`, dan tabel kesulitan per level (`levelConfig` di `js/config.js`: kecepatan, warna, batu, mesiu, jeda event).
 
 ---
 

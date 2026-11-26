@@ -1,4 +1,4 @@
-import { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel } from './config.js';
+import { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig } from './config.js';
 import { makeRng } from './util.js';
 import { Sand } from './sim.js';
 import { SHAPES, Bag } from './pieces.js';
@@ -57,18 +57,23 @@ export class Game {
     const color = 1 + Math.floor(this.rng() * this.numColors);
     const roll = this.rng();
     // Material khusus muncul sesekali (tetap punya warna), tidak dua kali berturut-turut.
+    // Karena aturan "tidak berturut-turut", peluang undian dinaikkan supaya peluang NYATA per piece
+    // sama dengan tabel: kalau target total T, undian p = T / (1 − T).
+    const { stone, gun } = levelConfig(this.level);
+    const total = stone + gun;
+    const k = total > 0 ? 1 / (1 - total) : 0;
     let mat = MAT_SAND;
     if (this.lastSpecial === MAT_SAND) {
-      if (this.level >= CFG.GUN_LEVEL && roll < CFG.GUN_CHANCE) mat = MAT_GUN;
-      else if (this.level >= CFG.STONE_LEVEL && roll >= 1 - CFG.STONE_CHANCE) mat = MAT_STONE;
+      if (roll < gun * k) mat = MAT_GUN;
+      else if (roll >= 1 - stone * k) mat = MAT_STONE;
     }
     this.lastSpecial = mat;
     return { type, color, mat };
   }
 
+  // Ruang napas (warna baru masuk): kecepatan memakai level sebelumnya selama CFG.BREATHER detik.
   gravityInterval() {
-    const lvl = Math.max(1, this.level - (this.breather > 0 ? 1 : 0));
-    return Math.max(CFG.GRAVITY_MIN, CFG.GRAVITY_BASE * Math.pow(CFG.GRAVITY_DECAY, lvl - 1));
+    return levelConfig(Math.max(1, this.level - (this.breather > 0 ? 1 : 0))).fall;
   }
 
   blocksOf(p, rot = p.rot) { return SHAPES[p.type].rots[rot]; }
@@ -227,8 +232,7 @@ export class Game {
       this.events.emit('eventEnd', e);
       this.event = null;
       this.eventsSurvived++;
-      const scale = Math.max(0.5, 1 - (this.level - 1) * 0.05);
-      this.eventTimer = this.randRange(CFG.EVENT_GAP) * scale;
+      this.eventTimer = this.randRange(levelConfig(this.level).eventGap);
     }
   }
 
@@ -288,9 +292,16 @@ export class Game {
     const newLevel = 1 + Math.floor(this.clears / CFG.CLEARS_PER_LEVEL);
     if (newLevel > this.level) {
       this.level = newLevel;
-      const n = colorsForLevel(newLevel);
-      if (n > this.numColors) { this.numColors = n; this.breather = CFG.BREATHER; }
-      this.events.emit('levelUp', { level: this.level, colors: this.numColors, tiltsUsed: this.tilt.used });
+      const lc = levelConfig(newLevel);
+      if (lc.colors > this.numColors) { this.numColors = lc.colors; this.breather = CFG.BREATHER; }
+      // Hitung mundur event ikut jeda level baru: level boss langsung lebih rapat,
+      // level lembah langsung lebih longgar (event yang sedang berjalan tidak diganggu).
+      if (!this.event) {
+        const next = this.randRange(lc.eventGap);
+        if (lc.boss) this.eventTimer = Math.min(this.eventTimer, next);
+        else if (lc.trough) this.eventTimer = Math.max(this.eventTimer, next);
+      }
+      this.events.emit('levelUp', { level: this.level, colors: this.numColors, boss: lc.boss, tiltsUsed: this.tilt.used });
     }
   }
 

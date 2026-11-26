@@ -28,7 +28,7 @@ export class Achievements {
   }
 
   unlock(id) {
-    if (this.unlocked.has(id)) return false;
+    if (this.disabled || this.unlocked.has(id)) return false;   // disabled: mode uji (lihat main.js)
     const def = ACHIEVEMENTS.find((a) => a.id === id);
     if (!def) return false;
     this.unlocked.add(id);

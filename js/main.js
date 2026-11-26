@@ -5,6 +5,7 @@ import { Input } from './input.js';
 import { sfx, unlockAudio, setSoundMode, getSoundMode, cycleSoundMode, setMusic, setDanger, setPausedMusic, audioDebug } from './audio.js';
 import { Achievements } from './achievements.js';
 import { Leaderboard, validName } from './leaderboard.js';
+import { CFG, colorsForLevel, levelConfig } from './config.js';
 
 const STEP = 1 / 60;
 const canvas = document.getElementById('screen');
@@ -233,10 +234,30 @@ function goTitle() {
   setScreen('title');
 }
 
+// Mode uji (untuk mencoba kesulitan):
+//   ?jatuh=0.15  → kecepatan jatuh tetap 0,15 detik per baris di semua level
+//   ?level=12    → mulai langsung di level 12
+// Selama mode uji, skor tidak dikirim/disimpan dan prestasi tidak terbuka.
+const TEST = {
+  fall: Number(params.get('jatuh')) || 0,
+  level: Math.max(1, Math.min(99, Math.floor(Number(params.get('level')) || 1))),
+};
+TEST.on = TEST.fall > 0 || TEST.level > 1;
+if (TEST.fall > 0) CFG.FALL_OVERRIDE = Math.max(0.02, Math.min(2, TEST.fall));
+ach.disabled = TEST.on;
+
 function startGame() {
   unlockAudio();
   const seed = params.has('seed') ? Number(params.get('seed')) : (Date.now() ^ (Math.random() * 1e9)) >>> 0;
   game.reset(seed);
+  if (TEST.level > 1) {
+    // mulai langsung di level tertentu (warna, batu, mesiu, event ikut level itu)
+    game.level = TEST.level;
+    game.clears = (TEST.level - 1) * CFG.CLEARS_PER_LEVEL;
+    game.numColors = colorsForLevel(TEST.level);
+    game.eventTimer = Math.min(game.eventTimer, game.randRange(levelConfig(TEST.level).eventGap));
+  }
+  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR & PRESTASI TIDAK DISIMPAN');
   ach.sessionNew = 0;
   ui.over = null;
   ui.lbStatus = '';
@@ -426,6 +447,14 @@ function onGameOver(stats) {
   input.enabled = false;
   input.releaseAll();
   sfx.gameOver();
+  if (TEST.on) {
+    // mode uji: hasil hanya ditampilkan, tidak masuk rekor, skor lokal, atau peringkat
+    ui.over = { ...stats, newBest: false, newAch: 0 };
+    overTimer = 0.9;
+    ui.lbStatus = 'MODE UJI - SKOR TIDAK DISIMPAN';
+    ui.lbStatusColor = renderer.pal.dim;
+    return;
+  }
   const newBest = stats.score > ui.best;
   if (newBest) { ui.best = stats.score; store.set('best', ui.best); }
   ui.over = { ...stats, newBest, newAch: 0 };

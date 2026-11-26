@@ -1,4 +1,4 @@
-import { W, H, BLOCK, CFG, MAT_STONE, MAT_GUN } from './config.js';
+import { W, H, BLOCK, CFG, MAT_STONE, MAT_GUN, isBossLevel } from './config.js';
 import { SHAPES } from './pieces.js';
 import { drawText, textWidthPx, drawBlockText, blockTextWidth } from './font.js';
 
@@ -14,37 +14,38 @@ export const PALETTES = {
     dim: '#8a84a8', accent: '#f2c14e', danger: '#ff4d5e', shadow: '#0b0a12',
     sand: ['#e8505b', '#f2c14e', '#3fbf8f', '#4c8bf5', '#b45ce0'],
     speck: '#ffb04a',                                    // bintik mesiu
+    boss: '#ff4d5e',                                     // angka LEVEL saat level boss
   },
   retro: {
     bg: '#0d170d', boardA: '#132213', boardB: '#162716', frame: '#3f6f3f', text: '#c8f5b0',
     dim: '#5f9a5a', accent: '#e8ff9a', danger: '#f0ff70', shadow: '#081008',
     sand: ['#f0ffd8', '#a9e47c', '#6fbd4f', '#3f8a32', '#d2d36a'],
-    speck: '#ffff9a',
+    speck: '#ffff9a', boss: '#ff8a5c',
   },
   // ---- tema tambahan (gratis / hadiah prestasi, lihat THEMES di main.js) ----
   senja: {
     bg: '#1e1220', boardA: '#2a1826', boardB: '#2f1b2b', frame: '#7a4a5e', text: '#ffe9d6',
     dim: '#c08a8a', accent: '#ffb347', danger: '#ff4d4d', shadow: '#120a12',
     sand: ['#ff6b5a', '#ffc15e', '#e8dcae', '#5fb8a8', '#9a6fd0'],
-    speck: '#fff0a0', overlay: '18,10,16',
+    speck: '#fff0a0', overlay: '18,10,16', boss: '#ff4d6d',
   },
   neon: {
     bg: '#05050a', boardA: '#0a0a14', boardB: '#0d0d1a', frame: '#2f2f5a', text: '#f0f6ff',
     dim: '#7a86b8', accent: '#39ff88', danger: '#ff2e6e', shadow: '#000000',
     sand: ['#ff3ea5', '#ffe53b', '#39ff88', '#2ee6ff', '#a46bff'],
-    speck: '#ffffff', overlay: '0,0,4',
+    speck: '#ffffff', overlay: '0,0,4', boss: '#ff2e6e',
   },
   kertas: {   // tema terang
     bg: '#efe6d2', boardA: '#e6dcc4', boardB: '#e0d5ba', frame: '#a8977a', text: '#3b3046',
     dim: '#7d6f82', accent: '#d9573b', danger: '#c8283c', shadow: '#fbf6ea',
     sand: ['#e0685a', '#e8b04a', '#5aa77f', '#5a86c8', '#9a72c2'],
-    speck: '#5a3a1a', overlay: '239,230,210',
+    speck: '#5a3a1a', overlay: '239,230,210', boss: '#2456c8',   // biru: aksen tema ini sudah merah
   },
   kontras: {  // warna Okabe-Ito: tetap bisa dibedakan oleh penderita buta warna
     bg: '#000000', boardA: '#0b0b0b', boardB: '#141414', frame: '#5a5a5a', text: '#ffffff',
     dim: '#b4b4b4', accent: '#ffd400', danger: '#ff3030', shadow: '#000000',
     sand: ['#d55e00', '#f0e442', '#009e73', '#56b4e9', '#cc79a7'],
-    speck: '#ffffff', overlay: '0,0,0',
+    speck: '#ffffff', overlay: '0,0,0', boss: '#ff3030',
   },
 };
 
@@ -152,7 +153,7 @@ export class Renderer {
       if (d.chain > 1) this.addFloat(`CHAIN X${d.chain}!`, cx, cy + 7, this.pal.accent);
     });
     ev.on('cleared', (d) => this.burst(d.cells, d.colors));
-    ev.on('levelUp', (d) => this.addFloat(`LEVEL ${d.level}!`, BX + W / 2, BY + 50, this.pal.accent, 1.6));
+    ev.on('levelUp', (d) => this.addFloat(`LEVEL ${d.level}!`, BX + W / 2, BY + 50, d.boss ? this.pal.boss : this.pal.accent, 1.6));
     ev.on('gameOver', () => { this.shake = 6; });
     ev.on('quake', () => { this.shake = 10; });
     ev.on('eventStart', (e) => { if (e.type === 'quake') this.shake = 6; });
@@ -519,7 +520,8 @@ export class Renderer {
 
     label('SKOR'); value(g.score);
     label('TERBAIK'); value(Math.max(ui.best, g.score), P.dim);
-    label('LEVEL'); value(g.level + (g.breather > 0 ? ' ~' : ''));
+    // level boss: angka LEVEL memakai warna boss tema (kontras >= 5:1 dengan latar, beda dari teks & aksen)
+    label('LEVEL'); value(g.level + (g.breather > 0 ? ' ~' : ''), isBossLevel(g.level) ? P.boss : P.text);
     label('CHAIN'); value(g.chain > 0 ? 'X' + g.chain : '-', g.chain > 1 ? P.accent : P.text);
 
     // meter miring

@@ -179,11 +179,16 @@ export class Leaderboard {
     const p = store.get('pending');
     if (p && p.score <= stats.score) store.set('pending', null);
   }
+  // Kirim ulang skor tertunda. Hasil: 'sent' (terkirim), 'name' (perlu nama baru: nama lama ternyata
+  // dipakai pemain lain; skor TETAP disimpan, run-nya belum terpakai di server), atau null.
   async flushPending() {
     const p = store.get('pending');
-    if (p && (p.week !== localWeekStart() || !p.run)) { store.set('pending', null); return; }
-    if (!p || !this.name) return;
+    if (p && (p.week !== localWeekStart() || !p.run)) { store.set('pending', null); return null; }
+    if (!p) return null;
+    if (!this.name) return 'name';
     const r = await this.submit(p);
+    if (r.code === 'NAME_TAKEN' || r.code === 'BAD_NAME') return 'name';
     if (r.ok || !r.offline) store.set('pending', null);
+    return r.ok ? 'sent' : null;
   }
 }

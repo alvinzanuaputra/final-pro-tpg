@@ -2544,12 +2544,17 @@ class Leaderboard {
     const p = store.get('pending');
     if (p && p.score <= stats.score) store.set('pending', null);
   }
+  // Kirim ulang skor tertunda. Hasil: 'sent' (terkirim), 'name' (perlu nama baru: nama lama ternyata
+  // dipakai pemain lain; skor TETAP disimpan, run-nya belum terpakai di server), atau null.
   async flushPending() {
     const p = store.get('pending');
-    if (p && (p.week !== localWeekStart() || !p.run)) { store.set('pending', null); return; }
-    if (!p || !this.name) return;
+    if (p && (p.week !== localWeekStart() || !p.run)) { store.set('pending', null); return null; }
+    if (!p) return null;
+    if (!this.name) return 'name';
     const r = await this.submit(p);
+    if (r.code === 'NAME_TAKEN' || r.code === 'BAD_NAME') return 'name';
     if (r.ok || !r.offline) store.set('pending', null);
+    return r.ok ? 'sent' : null;
   }
 }
 
@@ -3058,6 +3063,17 @@ nameForm.addEventListener('submit', async (e) => {
   const fn = nameDone; nameDone = null;
   if (fn) fn();
 });
+// Skor tertunda (gagal terkirim saat offline) dikirim ulang saat game dibuka. Kalau namanya ternyata
+// sudah dipakai pemain lain, skor tetap disimpan dan pemain diminta memilih nama baru.
+async function flushPendingScore() {
+  const r = await lb.flushPending();
+  if (r === 'sent') renderer.showToast('SKOR TERTUNDA', 'MASUK PERINGKAT');
+  else if (r === 'name' && !nameBox.classList.contains('show')) {
+    askName(flushPendingScore, lb.name
+      ? `Nama "${lb.name}" sudah dipakai pemain lain. Pilih nama baru supaya skor tertundamu tersimpan.`
+      : 'Isi nama supaya skor tertundamu tersimpan.');
+  }
+}
 nameSkip.addEventListener('click', () => {
   closeName();
   nameDone = null;
@@ -3177,7 +3193,7 @@ function frame(now) {
 
 layout();
 window.addEventListener('load', layout);
-lb.flushPending();
+flushPendingScore();
 requestAnimationFrame(frame);
 
 // ------------------------------------------------- hook untuk pengujian

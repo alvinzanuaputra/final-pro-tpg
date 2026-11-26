@@ -91,6 +91,26 @@ Setiap piece punya **warna** (3–5 warna aktif) **dan material**. Material khus
 ### 3.8 Menang
 - Tidak ada kondisi menang (Endless). Tujuannya adalah high score, chain terbaik, dan membuka achievement.
 
+### 3.9 Tutorial (pemain baru)
+- **Otomatis** saat pertama kali menekan MAIN di perangkat itu (`tutorialDone` di `localStorage`). Durasi ±1,5 menit.
+- Tidak menambah tombol menu: di layar judul hanya ada **ikon ? di pojok kanan atas** (keyboard: **H**) yang membuka **modal CARA MAIN** di atas layar judul (teks rata tengah): ringkasan 5 poin + ilustrasi jembatan + tombol **MAIN TUTORIAL** / **KEMBALI**. Klik di luar kotak = tutup.
+- 6 langkah interaktif. Langkah berikutnya baru muncul setelah aksi dilakukan. Petunjuk ada di panel samping (menggantikan skor), dengan tombol keyboard **atau** tombol sentuh sesuai perangkat:
+
+| # | Langkah | Papan | Selesai saat |
+|---|---|---|---|
+| 1 | GERAK | kosong, piece melayang (tidak jatuh sendiri) | **semua** tombol sudah dicoba: geser kiri, geser kanan, putar, putar balik |
+| 2 | JATUHKAN | piece jatuh pelan | turun pelan **dan** jatuh instan sudah dicoba, lalu piece mendarat → "JADI PASIR!" |
+| 3 | JEMBATAN | disiapkan: lapisan merah dengan celah 2 blok + panah ke celah, dinding kiri/kanan menyala | clear pertama (piece merah I) |
+| 4 | MIRING | disiapkan: pasir merah berhenti 2 blok sebelum dinding kanan + panah ke kanan | clear lewat tilt |
+| 5 | BATU | lubang sedalam papan diapit dua pilar batu. Game dulu menjatuhkan balok **pasir** kuning otomatis → rontok ke lubang. Lalu pemain menjatuhkan balok **batu** merah (I) | batu tetap utuh di atas lubang, menyambung lapisan merah → clear |
+| 6 | MESIU | jembatan bercelah + tumpukan batu 4×4 blok di kiri yang dialiri mesiu (dasar + 2 urat), ditandai kotak putus-putus | celah diisi piece merah → clear menyalakan mesiu → tumpukan batu meledak |
+
+- Tombol yang sudah dicoba ditampilkan **pudar** (opacity rendah) di panel, sehingga pemain tahu tombol mana yang belum dicoba. Di langkah 5–6 contoh tekstur materialnya tampil di samping judul. Selama peragaan pasir di langkah 5, input pemain diabaikan (`rules.controls = false`).
+- Gagal (tidak terjadi clear ±2 detik setelah mencoba) → papan disiapkan ulang + teks **COBA LAGI**.
+- Selama tutorial: tanpa event, garis bahaya, naik level, prestasi, dan skor tidak dikirim ke peringkat.
+- Bisa dilewati: Esc/P/MENU → **LEWATI TUTORIAL** (langsung main). Keluar ke menu utama juga dianggap selesai.
+- Akhir: layar **SIAP MAIN!** (ingatkan garis merah; material & event baru dijelaskan toast saat pertama muncul) → MAIN SEKARANG / MENU UTAMA.
+
 ---
 
 ## 4. Skor & Progresi
@@ -292,6 +312,8 @@ CREATE TABLE IF NOT EXISTS `<NRP>_sandtilt_leaderboard` (
 5. **Achievement:** grid ikon (terbuka/terkunci/???)
 6. **Leaderboard:** tab Minggu Ini / Sepanjang Masa, hitung mundur reset
 7. **Input Nickname:** muncul sekali saat skor pertama akan dikirim
+8. **Cara Main (modal):** dibuka dari ikon ? di layar judul, kotak di atas layar judul berisi ringkasan + tombol MAIN TUTORIAL
+9. **Tutorial selesai:** SIAP MAIN! → MAIN SEKARANG / MENU UTAMA
 
 ---
 

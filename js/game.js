@@ -13,6 +13,10 @@ export class Game {
 
   reset(seed) {
     this.seed = seed >>> 0;
+    // Aturan yang bisa dimatikan mode tutorial (lihat tutorial.js). Game normal: semua aktif.
+    // fall: null = kecepatan level, 0 = piece melayang (tidak jatuh sendiri), > 0 = detik per baris.
+    // controls: false = input pemain diabaikan (tutorial sedang memperagakan sesuatu).
+    this.rules = { events: true, danger: true, level: true, spawn: true, fall: null, controls: true };
     this.rng = makeRng(this.seed);
     this.sand = new Sand(this.rng);
     this.bag = new Bag(this.rng);
@@ -73,6 +77,7 @@ export class Game {
 
   // Ruang napas (warna baru masuk): kecepatan memakai level sebelumnya selama CFG.BREATHER detik.
   gravityInterval() {
+    if (this.rules.fall) return this.rules.fall;
     return levelConfig(Math.max(1, this.level - (this.breather > 0 ? 1 : 0))).fall;
   }
 
@@ -90,6 +95,14 @@ export class Game {
       }
     }
     return false;
+  }
+
+  // Munculkan piece tertentu (tutorial), menggantikan piece yang sedang jatuh.
+  spawnSpec(spec) {
+    this.next = { mat: MAT_SAND, ...spec };
+    this.lastSpecial = MAT_SAND;
+    this.piece = null;
+    this.spawn();
   }
 
   spawn() {
@@ -122,7 +135,7 @@ export class Game {
     if (!p || this.collides(p, p.x + dx, p.y, p.rot)) return false;
     p.x += dx;
     this.touchLock();
-    this.events.emit('move');
+    this.events.emit('move', dx);
     return true;
   }
 
@@ -136,7 +149,7 @@ export class Game {
       if (!this.collides(p, p.x + kx, p.y + ky, rot)) {
         p.x += kx; p.y += ky; p.rot = rot;
         this.touchLock();
-        this.events.emit('rotate');
+        this.events.emit('rotate', dir);
         return true;
       }
     }
@@ -200,6 +213,7 @@ export class Game {
 
   // Event pengganggu: peringatan dulu, lalu aktif beberapa detik.
   updateEvent(dt) {
+    if (!this.rules.events) return;
     if (!this.event) {
       this.eventTimer -= dt;
       if (this.eventTimer > 0) return;
@@ -259,7 +273,7 @@ export class Game {
     this.events.emit('land', { x: p.x, y: p.y, color: p.color, mat: p.mat, hard });
     this.piece = null;
     if (outOfTop) { this.gameOver('lockout'); return; }
-    this.spawn();
+    if (this.rules.spawn) this.spawn();
   }
 
   startClear(res) {
@@ -290,7 +304,7 @@ export class Game {
     });
 
     const newLevel = 1 + Math.floor(this.clears / CFG.CLEARS_PER_LEVEL);
-    if (newLevel > this.level) {
+    if (newLevel > this.level && this.rules.level) {
       this.level = newLevel;
       const lc = levelConfig(newLevel);
       if (lc.colors > this.numColors) { this.numColors = lc.colors; this.breather = CFG.BREATHER; }
@@ -354,6 +368,7 @@ export class Game {
 
     let actions = input.actions;
     if (this.buffer.length) { actions = this.buffer.concat(actions); this.buffer = []; }
+    if (!this.rules.controls) { actions = []; input = { actions, soft: false, tilt: 0 }; }
 
     this.updateTilt(dt, input.tilt || 0);
     this.updateEvent(dt);
@@ -382,7 +397,8 @@ export class Game {
     if (p) {
       const normal = BLOCK / this.gravityInterval();
       const speed = input.soft ? Math.max(normal, CFG.SOFT_DROP_SPEED) : normal;
-      p.fall += speed * dt;
+      // fall 0 (tutorial): piece melayang sampai pemain menurunkannya sendiri
+      if (this.rules.fall !== 0 || input.soft) p.fall += speed * dt;
       while (p.fall >= 1) {
         p.fall -= 1;
         if (!this.collides(p, p.x, p.y + 1, p.rot)) {
@@ -420,7 +436,7 @@ export class Game {
     }
 
     // Garis bahaya
-    if (this.sand.anyAbove(CFG.DANGER_Y)) {
+    if (this.rules.danger && this.sand.anyAbove(CFG.DANGER_Y)) {
       this.danger += dt;
       if (this.danger >= CFG.DANGER_GRACE) this.gameOver('danger');
     } else this.danger = 0;

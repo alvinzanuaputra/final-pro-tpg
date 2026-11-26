@@ -5,6 +5,7 @@ import { Input } from './input.js';
 import { sfx, unlockAudio, setSoundMode, getSoundMode, cycleSoundMode, setMusic, setDanger, setPausedMusic, audioDebug } from './audio.js';
 import { Achievements } from './achievements.js';
 import { Leaderboard, validName } from './leaderboard.js';
+import { Tutorial } from './tutorial.js';
 import { CFG, colorsForLevel, levelConfig } from './config.js';
 
 const STEP = 1 / 60;
@@ -44,7 +45,7 @@ ui.soundMode = getSoundMode();
 ui.muted = ui.soundMode === 'off';
 const SOUND_LABEL = { all: 'MUSIK + EFEK', sfx: 'EFEK SAJA', off: 'MATI' };
 // musik yang diputar per layar
-const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', settings: 'title', play: 'game', pause: 'game', over: null };
+const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', settings: 'title', help: 'title', play: 'game', pause: 'game', tutDone: 'game', over: null };
 renderer.setPalette(store.get('palette', 'default'));
 
 // Menu dengan isi dinamis (pause, settings) dihitung di menuItems().
@@ -53,6 +54,8 @@ const MENUS = {
   over: ['restart', 'board', 'menu'],
   board: ['back'],
   ach: ['back'],
+  help: ['tutorial', 'back'],
+  tutDone: ['play', 'menu'],
 };
 
 // ---------------------------------------------------------------- input
@@ -73,12 +76,13 @@ function uiNav(cmd) {
   }
   const items = menuItems(ui.screen);
   if (!items) return;
+  if (ui.screen === 'help' && (cmd === 'left' || cmd === 'right')) cmd = cmd === 'left' ? 'up' : 'down';   // tombol berdampingan
   if (cmd === 'down') { ui.focus = (ui.focus + 1) % items.length; sfx.cursor(); }
   else if (cmd === 'up') { ui.focus = (ui.focus + items.length - 1) % items.length; sfx.cursor(); }
   else if (cmd === 'ok') { sfx.click(); activate(items[ui.focus]); }
   else if (cmd === 'back') {
-    if (ui.screen === 'board' || ui.screen === 'ach' || ui.screen === 'settings') { sfx.back(); activate('back'); }
-    else if (ui.screen === 'over') { sfx.back(); activate('menu'); }
+    if (ui.screen === 'board' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'help') { sfx.back(); activate('back'); }
+    else if (ui.screen === 'over' || ui.screen === 'tutDone') { sfx.back(); activate('menu'); }
   }
 }
 
@@ -103,6 +107,7 @@ function onUiKey(e) {
   if (ui.screen === 'start') { goTitle(); return; }
   if (e.code === 'KeyM') { toggleMute(); return; }
   if (e.code === 'KeyF') { toggleFullscreen(); return; }
+  if (e.code === 'KeyH' && ui.screen === 'title') { sfx.click(); activate('help'); return; }
 
   if (ui.screen === 'play') {
     if (e.code === 'KeyP' || e.code === 'Escape') pause();
@@ -186,7 +191,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (ui.screen === 'start') { goTitle(); return; }
   const [lx, ly] = toLogical(e);
   const id = renderer.hit(lx, ly);
-  if (id) { sfx.click(); activate(id); return; }
+  if (id) { if (id !== 'none') { sfx.click(); activate(id); } return; }   // 'none': bagian dalam modal
   if (inScrollArea(lx, ly)) {
     drag = { id: e.pointerId, y: ly, target: ui.scroll.target, lastY: ly, lastT: e.timeStamp, v: 0 };
     try { canvas.setPointerCapture(e.pointerId); } catch { /* abaikan */ }
@@ -248,6 +253,7 @@ ach.disabled = TEST.on;
 
 function startGame() {
   unlockAudio();
+  endTutorial();
   const seed = params.has('seed') ? Number(params.get('seed')) : (Date.now() ^ (Math.random() * 1e9)) >>> 0;
   game.reset(seed);
   if (TEST.level > 1) {
@@ -265,6 +271,38 @@ function startGame() {
   lb.startRun();   // server mencatat waktu mulai; skor hanya diterima untuk run ini
   setScreen('play');
   enableInputNextFrame();
+}
+
+// ------------------------------------------------------------- TUTORIAL
+// Pemain baru (belum pernah menyelesaikan/melewati tutorial) otomatis masuk tutorial saat menekan MAIN.
+// Bisa diulang dari ikon ? di layar judul → CARA MAIN → MAIN TUTORIAL.
+const tutorial = new Tutorial(game, events, () => {
+  store.set('tutorialDone', true);
+  input.enabled = false;
+  input.releaseAll();
+  sfx.levelUp();
+  setScreen('tutDone');
+});
+ui.tutorial = tutorial;
+
+function startTutorial() {
+  unlockAudio();
+  game.reset((Date.now() ^ (Math.random() * 1e9)) >>> 0);
+  ach.disabled = true;           // tutorial tidak membuka prestasi
+  tutorial.start();
+  ui.over = null;
+  setScreen('play');
+  enableInputNextFrame();
+}
+
+function endTutorial() {
+  tutorial.stop();
+  ach.disabled = TEST.on;
+}
+
+function skipTutorial() {
+  store.set('tutorialDone', true);
+  startGame();
 }
 
 function enableInputNextFrame() {
@@ -289,9 +327,19 @@ function resume() {
 function activate(id) {
   switch (id) {
     case 'play':
+      if (!store.get('tutorialDone', false) && !TEST.on && ui.screen === 'title') startTutorial();
+      else startGame();
+      break;
     case 'restart': startGame(); break;
+    case 'help': setScreen('help'); break;
+    case 'tutorial': startTutorial(); break;
+    case 'skipTut': skipTutorial(); break;
     case 'resume': resume(); break;
-    case 'menu': goTitle(); break;
+    case 'menu':
+      if (tutorial.active) store.set('tutorialDone', true);   // keluar dari tutorial = tidak dipaksa lagi
+      endTutorial();
+      goTitle();
+      break;
     case 'board':
       ui.fromOver = ui.screen === 'over';
       setScreen('board');
@@ -381,7 +429,7 @@ function checkAlvinWebsite() {
 function titleItems() { return MENUS.title; }
 // Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
-  if (screen === 'pause') return ['resume', 'restart', 'sound', 'theme', 'menu'];
+  if (screen === 'pause') return tutorial.active ? ['resume', 'skipTut', 'menu'] : ['resume', 'restart', 'sound', 'theme', 'menu'];
   if (screen === 'settings') return ['sound', 'theme', 'back'];
   return MENUS[screen];
 }
@@ -446,6 +494,7 @@ let overTimer = 0;
 function onGameOver(stats) {
   input.enabled = false;
   input.releaseAll();
+  if (tutorial.active) { startTutorial(); return; }   // seharusnya tidak terjadi (garis bahaya mati); mulai ulang saja
   sfx.gameOver();
   if (TEST.on) {
     // mode uji: hasil hanya ditampilkan, tidak masuk rekor, skor lokal, atau peringkat
@@ -615,6 +664,7 @@ let last = performance.now(), acc = 0, heart = 0, dangerOn = false;
 
 function tick() {
   game.update(STEP, input.poll(STEP));
+  tutorial.update(STEP);
 }
 
 function step(dt) {
@@ -646,6 +696,7 @@ function frame(now) {
   step(dt);
   ui.titleItems = titleItems();
   ui.menuItems = menuItems(ui.screen);
+  ui.tutView = tutorial.active || ui.screen === 'tutDone' ? tutorial.view(ui.touch) : null;
   ui.theme = renderer.paletteName;
   ui.themeName = (THEMES.find((t) => t.id === ui.theme) || THEMES[0]).name;
   // di Pengaturan: beri tahu kalau masih ada tema yang bisa dibuka lewat prestasi
@@ -679,6 +730,7 @@ window.render_game_to_text = () => {
   }
   return JSON.stringify({
     note: 'grid 80x160 butir, origin kiri-atas, y ke bawah; heights = tinggi pasir per kolom blok',
+    tutorial: tutorial.active ? { step: tutorial.key, done: tutorial.done, retry: tutorial.retry } : null,
     screen: ui.screen, state: g.state, score: g.score, level: g.level, chain: g.chain,
     clears: g.clears, colors: g.numColors, grains: g.sand.count(), danger: +g.danger.toFixed(2),
     tilt: { meter: +g.tilt.meter.toFixed(2), active: g.tilt.active, dir: g.tilt.dir, effective: g.effectiveTilt() },

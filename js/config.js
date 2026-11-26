@@ -47,6 +47,7 @@ export const CFG = {
 
   DANGER_Y: 2 * BLOCK,             // pasir di atas garis ini = bahaya
   DANGER_GRACE: 1.5,
+  SPAWN_WAIT: 1.5,                 // detik piece berikutnya boleh menunggu tempat muncul kosong sebelum kalah
   NEAR_MISS: BLOCK,                // prestasi NYARIS: clear saat pasir sampai ≤ 1 blok di bawah garis bahaya (atau lewat)
 
   // Kedip + hitstop saat clear (lihat clearFlash di bawah). Selama kedip, tombol diabaikan.

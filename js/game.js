@@ -44,6 +44,9 @@ export class Game {
     this.eventsSurvived = 0;
 
     this.danger = 0;
+    this.overflow = [];             // butir piece yang terkunci di atas papan, menunggu dituang masuk
+    this.pending = null;            // piece berikutnya yang menunggu tempat muncul kosong
+    this.spawnWait = 0;
     this.clearing = null;
     this.dirty = false;
     this.checkTimer = 0;
@@ -105,21 +108,29 @@ export class Game {
   }
 
   spawn() {
-    const spec = this.next;
+    this.pending = this.next;
     this.next = this.makeSpec();
+    this.spawnWait = 0;
+    this.trySpawn();
+  }
+
+  // Munculkan piece yang menunggu. Kalau tempat muncul masih tertutup pasir yang sedang runtuh
+  // (atau masih ada butir antre di atas papan), tunggu dulu; baru kalah kalau tertutup terus
+  // selama CFG.SPAWN_WAIT detik (lihat update).
+  trySpawn() {
+    const spec = this.pending;
     const size = SHAPES[spec.type].size;
-    this.piece = {
+    const p = {
       type: spec.type, color: spec.color, mat: spec.mat, rot: 0,
       x: Math.floor((COLS - size) / 2) * BLOCK,
       y: spec.type === 'I' ? -BLOCK : 0,
       fall: 0, lock: 0, lockResets: 0, softCells: 0,
     };
-    if (this.collides(this.piece, this.piece.x, this.piece.y, 0)) {
-      this.piece = null;
-      this.gameOver('spawn');
-    } else {
-      this.events.emit('spawn', this.piece);
-    }
+    if (this.overflow.length || this.collides(p, p.x, p.y, 0)) { this.piece = null; return false; }
+    this.piece = p;
+    this.pending = null;
+    this.events.emit('spawn', p);
+    return true;
   }
 
   // Y terendah yang bisa dicapai piece (untuk ghost & hard drop).
@@ -251,13 +262,20 @@ export class Game {
 
   // Piece hancur jadi pasir.
   lockPiece(hard = false) {
+    // Chain = clear beruntun yang dipicu SATU penempatan. Piece baru mendarat → hitungan mulai lagi,
+    // jadi menjatuhkan piece terus-menerus (spam) tidak bisa menaikkan pengali chain.
+    if (this.chain > 0) { this.events.emit('chainEnd', this.chain); this.chain = 0; }
     const p = this.piece;
     const c = this.sand.cells, s = this.sand.shade, m = this.sand.mat;
-    let outOfTop = false;
     for (const [bx, by] of this.blocksOf(p)) {
       const cx = p.x + bx * BLOCK, cy = p.y + by * BLOCK;
       for (let yy = cy; yy < cy + BLOCK; yy++) {
-        if (yy < 0) { outOfTop = true; continue; }
+        if (yy < 0) {
+          // Bagian piece di atas papan tidak langsung kalah: butirnya antre dan dituang masuk begitu
+          // ada ruang (lihat pourOverflow). Kalah/tidaknya diputuskan garis bahaya seperti biasa.
+          for (let xx = cx; xx < cx + BLOCK; xx++) this.overflow.push({ x: xx, color: p.color, mat: p.mat });
+          continue;
+        }
         const row = yy * W;
         for (let xx = cx; xx < cx + BLOCK; xx++) {
           c[row + xx] = p.color;
@@ -271,8 +289,19 @@ export class Game {
     this.dirty = true;
     this.events.emit('land', { x: p.x, y: p.y, color: p.color, mat: p.mat, hard });
     this.piece = null;
-    if (outOfTop) { this.gameOver('lockout'); return; }
     if (this.rules.spawn) this.spawn();
+  }
+
+  // Tuang butir antrean (bagian piece yang terkunci di atas papan) ke baris teratas yang kosong.
+  pourOverflow() {
+    if (!this.overflow.length) return;
+    const c = this.sand.cells, s = this.sand.shade, m = this.sand.mat;
+    this.overflow = this.overflow.filter((g) => {
+      if (c[g.x] !== 0) return true;
+      c[g.x] = g.color; m[g.x] = g.mat; s[g.x] = (this.rng() * 4) | 0;
+      this.dirty = true;
+      return false;
+    });
   }
 
   startClear(res) {
@@ -417,6 +446,13 @@ export class Game {
     if (quaking && this.sand.quakeMix(CFG.QUAKE_SWAPS) > 0) this.dirty = true;
     const moved = this.sand.step(this.effectiveTilt(), jitter);
     if (moved > 0) this.dirty = true;
+    this.pourOverflow();
+
+    // Piece berikutnya menunggu tempat muncul kosong (pasir yang baru runtuh belum turun).
+    if (this.pending && this.rules.spawn && !this.trySpawn()) {
+      this.spawnWait += dt;
+      if (this.spawnWait >= CFG.SPAWN_WAIT) { this.gameOver('spawn'); return; }
+    }
 
     // Cek jembatan
     this.checkTimer++;
@@ -433,7 +469,7 @@ export class Game {
     }
 
     // Garis bahaya
-    if (this.rules.danger && this.sand.anyAbove(CFG.DANGER_Y)) {
+    if (this.rules.danger && (this.overflow.length || this.sand.anyAbove(CFG.DANGER_Y))) {
       this.danger += dt;
       if (this.danger >= CFG.DANGER_GRACE) this.gameOver('danger');
     } else this.danger = 0;

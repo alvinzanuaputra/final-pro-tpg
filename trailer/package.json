@@ -1,0 +1,26 @@
+{
+  "name": "sandtilt-trailer",
+  "private": true,
+  "type": "module",
+  "description": "Trailer SandTilt: rekam gameplay (Playwright) + rakit video (Remotion)",
+  "scripts": {
+    "assets": "node capture/sync-assets.mjs",
+    "capture": "node capture/capture.mjs",
+    "prestudio": "node capture/sync-assets.mjs",
+    "studio": "remotion studio src/index.ts",
+    "prerender": "node capture/sync-assets.mjs",
+    "render": "remotion render src/index.ts Trailer out/sandtilt-trailer.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.547",
+    "@remotion/fonts": "4.0.547",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remotion": "^4.0.547"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.3",
+    "playwright": "^1.65.1",
+    "typescript": "^7.0.2"
+  }
+}

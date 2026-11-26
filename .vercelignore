@@ -1,0 +1,7 @@
+# Vercel tidak menjalankan PHP: tanpa ini source PHP ikut tersaji sebagai teks.
+# File PHP & database.sql hanya untuk versi gameedukasi.
+api/*.php
+api/*.sqlite
+database.sql
+docs/
+tools/

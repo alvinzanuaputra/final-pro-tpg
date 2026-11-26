@@ -241,6 +241,7 @@ function startGame() {
   ui.over = null;
   ui.lbStatus = '';
   overTimer = 0;
+  lb.startRun();   // server mencatat waktu mulai; skor hanya diterima untuk run ini
   setScreen('play');
   enableInputNextFrame();
 }
@@ -497,6 +498,17 @@ nameForm.addEventListener('submit', async (e) => {
   const fn = nameDone; nameDone = null;
   if (fn) fn();
 });
+// Skor tertunda (gagal terkirim saat offline) dikirim ulang saat game dibuka. Kalau namanya ternyata
+// sudah dipakai pemain lain, skor tetap disimpan dan pemain diminta memilih nama baru.
+async function flushPendingScore() {
+  const r = await lb.flushPending();
+  if (r === 'sent') renderer.showToast('SKOR TERTUNDA', 'MASUK PERINGKAT');
+  else if (r === 'name' && !nameBox.classList.contains('show')) {
+    askName(flushPendingScore, lb.name
+      ? `Nama "${lb.name}" sudah dipakai pemain lain. Pilih nama baru supaya skor tertundamu tersimpan.`
+      : 'Isi nama supaya skor tertundamu tersimpan.');
+  }
+}
 nameSkip.addEventListener('click', () => {
   closeName();
   nameDone = null;
@@ -616,7 +628,7 @@ function frame(now) {
 
 layout();
 window.addEventListener('load', layout);
-lb.flushPending();
+flushPendingScore();
 requestAnimationFrame(frame);
 
 // ------------------------------------------------- hook untuk pengujian

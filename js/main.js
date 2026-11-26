@@ -9,6 +9,28 @@ import { Tutorial } from './tutorial.js';
 import { CFG, colorsForLevel, levelConfig } from './config.js';
 
 const STEP = 1 / 60;
+
+// Versi ATURAN SKOR (bukan versi aplikasi). Naikkan hanya kalau cara menghitung skor berubah
+// sehingga skor lama tidak sebanding lagi; kosongkan juga papan server pada saat yang sama
+// (Neon: DELETE FROM sandtilt_scores; DELETE FROM sandtilt_runs;).
+//   1 = chain lama (bisa dinaikkan dengan spam piece)   2 = chain dihitung per penempatan
+// Browser dengan versi lebih lama: skor terbaik, riwayat skor lokal, dan skor tertunda dikosongkan
+// sekali. Nama, token, prestasi, tema, suara, dan tutorial tidak disentuh.
+const SCORE_VERSION = 2;
+if (store.get('scoreVersion', 1) !== SCORE_VERSION) {
+  store.set('best', 0);
+  store.set('runs', []);
+  store.set('pending', null);
+  store.set('scoreVersion', SCORE_VERSION);
+}
+// Versi aturan PRESTASI. 2: BADAI PASIR (chain x5) sekarang berhadiah Tema Kertas, jadi yang didapat
+// dengan chain lama (bisa di-spam) dicabut sekali dan harus diraih ulang.
+const ACH_VERSION = 2;
+if (store.get('achVersion', 1) < ACH_VERSION) {
+  store.set('ach', store.get('ach', []).filter((id) => id !== 'chain5'));
+  store.set('achVersion', ACH_VERSION);
+}
+
 const canvas = document.getElementById('screen');
 const consoleEl = document.getElementById('console');
 const slotEl = document.getElementById('slot');
@@ -23,7 +45,7 @@ const events = new Emitter();
 const game = new Game(events);
 const renderer = new Renderer(canvas, events);
 const lb = new Leaderboard();
-const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', secret: 'TROFI RAHASIA!' };
+const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', legend: 'TROFI LEGENDA!', secret: 'TROFI RAHASIA!' };
 const ach = new Achievements(events, (def) => {
   renderer.showToast(TIER_TITLE[def.tier] || 'PRESTASI!', def.name, def.tier);
   sfx.achievement(def.tier);
@@ -263,7 +285,7 @@ function startGame() {
     game.numColors = colorsForLevel(TEST.level);
     game.eventTimer = Math.min(game.eventTimer, game.randRange(levelConfig(TEST.level).eventGap));
   }
-  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR & PRESTASI TIDAK DISIMPAN');
+  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR DAN PRESTASI TIDAK DISIMPAN');
   ach.sessionNew = 0;
   ui.over = null;
   ui.lbStatus = '';
@@ -278,6 +300,8 @@ function startGame() {
 // Bisa diulang dari ikon ? di layar judul → CARA MAIN → MAIN TUTORIAL.
 const tutorial = new Tutorial(game, events, () => {
   store.set('tutorialDone', true);
+  ach.disabled = TEST.on;        // selama tutorial prestasi dimatikan; buka khusus MURID TELADAN
+  ach.unlock('tutorial');
   input.enabled = false;
   input.releaseAll();
   sfx.levelUp();
@@ -347,6 +371,7 @@ function activate(id) {
       break;
     case 'ach': ui.ach = ach.list(); setScreen('ach'); break;
     case 'theme': toggleTheme(); break;
+    case 'name': askName(() => renderer.showToast('NAMA DISIMPAN', lb.name)); break;   // ganti nama (pengaturan)
     case 'sound': toggleMute(); break;
     case 'settings': setScreen('settings'); break;
     case 'credits': openCredits(); break;
@@ -384,7 +409,7 @@ const THEMES = [
   { id: 'kontras', name: 'KONTRAS', unlock: null },
   { id: 'retro', name: 'RETRO', unlock: 'counter' },      // hadiah prestasi rahasia LAWAN ARUS
   { id: 'neon', name: 'NEON', unlock: 'quake' },          // hadiah prestasi rahasia GOYANG DUMANG!
-  { id: 'kertas', name: 'KERTAS', unlock: 'close_call' }, // hadiah prestasi NYARIS!
+  { id: 'kertas', name: 'KERTAS', unlock: 'chain5' },     // hadiah prestasi BADAI PASIR (dulu NYARIS!)
 ];
 function themeUnlocked(t) {
   if (!t.unlock || renderer.paletteName === t.id) return true;
@@ -430,7 +455,7 @@ function titleItems() { return MENUS.title; }
 // Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
   if (screen === 'pause') return tutorial.active ? ['resume', 'skipTut', 'menu'] : ['resume', 'restart', 'sound', 'theme', 'menu'];
-  if (screen === 'settings') return ['sound', 'theme', 'back'];
+  if (screen === 'settings') return ['sound', 'theme', 'name', 'back'];
   return MENUS[screen];
 }
 function toggleTheme() {
@@ -663,7 +688,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 let last = performance.now(), acc = 0, heart = 0, dangerOn = false;
 
 function tick() {
-  game.update(STEP, input.poll(STEP));
+  const inp = input.poll(STEP);
+  // Selama kedip clear tombol diabaikan; geser-otomatis (tombol ← → ditahan) mulai ulang dari jeda
+  // awal, jadi piece tidak langsung meluncur begitu kedip selesai.
+  if (game.clearing) input.restartRepeat();
+  game.update(STEP, inp);
   tutorial.update(STEP);
 }
 

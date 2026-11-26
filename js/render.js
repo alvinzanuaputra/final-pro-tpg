@@ -51,7 +51,7 @@ export const PALETTES = {
 
 const SHADES = [1.12, 1.0, 0.91, 0.82];
 // warna garis tepi kartu prestasi per tingkat trofi (emas memakai warna aksen palet)
-const TIER_COLOR = { bronze: '#d08a4c', silver: '#c9cbe0', secret: '#b45ce0' };
+const TIER_COLOR = { bronze: '#d08a4c', silver: '#c9cbe0', legend: '#b45ce0', secret: '#b45ce0' };
 // panah pixel 5x5 untuk tombol keyboard di petunjuk kontrol
 const KEY_ARROWS = {
   left: ['..#..', '.#...', '#####', '.#...', '..#..'],
@@ -61,6 +61,8 @@ const KEY_ARROWS = {
   // simbol spasi ␣ (dipusatkan di tombol panjang)
   space: ['.....', '.....', '#.......#', '#.......#', '#########'],
 };
+// tombol kecil: panah & spasi digambar sebagai huruf font (font.js) supaya tebalnya sama dengan Q/E/P
+const KEY_GLYPHS = { left: '←', right: '→', up: '↑', down: '↓', space: '␣' };
 const EVENT_NAMES = { quake: 'GEMPA', wind: 'ANGIN', force: 'PAPAN MIRING' };
 
 function hexToRgb(hex) {
@@ -212,7 +214,7 @@ export class Renderer {
         this.icons[t] = img;
       }
     }
-    const img = this.icons[tier] || this.icons.locked;
+    const img = this.icons[tier === 'legend' ? 'secret' : tier] || this.icons.locked;   // legend memakai trofi ungu
     if (img.complete && img.naturalWidth) ctx.drawImage(img, Math.round(x), Math.round(y), 12, 11);
     else { ctx.fillStyle = this.pal.accent; ctx.fillRect(Math.round(x) + 2, Math.round(y) + 1, 8, 8); }
   }
@@ -639,8 +641,8 @@ export class Renderer {
 
   // ---------- petunjuk kontrol: tombol keyboard pixel ----------
   // Tombol 9 px tinggi: tepi terang bersudut terpotong, muka, dan bibir bawah gelap (kesan 3D).
-  drawKey(ctx, x, y, w, label) {
-    const P = this.pal, h = 9;
+  drawKey(ctx, x, y, w, label, small = false) {
+    const P = this.pal, h = small ? 7 : 9;
     ctx.fillStyle = P.dim;
     ctx.fillRect(x + 1, y, w - 2, h);
     ctx.fillRect(x, y + 1, w, h - 2);
@@ -648,7 +650,8 @@ export class Renderer {
     ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
     ctx.fillStyle = P.frame;
     ctx.fillRect(x + 1, y + 1, w - 2, h - 3);
-    const arrow = KEY_ARROWS[label];
+    const arrow = small ? null : KEY_ARROWS[label];
+    if (small) label = KEY_GLYPHS[label] || label;
     if (arrow) {
       ctx.fillStyle = P.text;
       const aw = Math.max(...arrow.map((row) => row.length));
@@ -657,34 +660,38 @@ export class Renderer {
         for (let rx = 0; rx < row.length; rx++) if (row[rx] === '#') ctx.fillRect(ax + rx, y + 1 + ry, 1, 1);
       });
     } else {
-      this.txt(label, x + w / 2, y + 1.6, P.text, 1, 'center', false);
+      this.txt(label, x + w / 2, y + (small ? 1.4 : 1.6), P.text, small ? 0.7 : 1, 'center', false);
     }
   }
 
   // parts: 'TEKS' | { k: 'Q' | 'left' | 'right' | 'up' | 'down', w? } | angka (jarak tambahan).
   // Baris dipusatkan di layar, atau rata kiri mulai x0 kalau diberikan.
   // Bagian bertanda done (tutorial: tombol sudah dicoba) digambar pudar; rowDone memudarkan teks barisnya juga.
-  keyHints(ctx, y, parts, x0 = null, rowDone = false) {
-    const keyW = (p) => p.w || (KEY_ARROWS[p.k] ? 9 : Math.max(9, Math.ceil(this.tw(p.k)) + 5));
-    const width = (p) => (typeof p === 'number' ? p : typeof p === 'string' ? this.tw(p) : keyW(p));
-    const total = parts.reduce((s, p, i) => s + width(p) + (i && typeof p !== 'number' ? 2 : 0), 0);
+  keyHints(ctx, y, parts, x0 = null, rowDone = false, alpha = 1, small = false) {
+    const TS = small ? 0.75 : 1, GAP = small ? 1.5 : 2;   // ukuran teks & jarak antar bagian
+    const keyW = (p) => (p.w ? (small ? Math.round(p.w * 0.7) : p.w)
+      : KEY_ARROWS[p.k] ? (small ? 7 : 9) : small ? Math.max(7, Math.ceil(this.tw(p.k, 0.7)) + 4) : Math.max(9, Math.ceil(this.tw(p.k)) + 5));
+    const width = (p) => (typeof p === 'number' ? p * TS : typeof p === 'string' ? this.tw(p, TS) : keyW(p));
+    const total = parts.reduce((s, p, i) => s + width(p) + (i && typeof p !== 'number' ? GAP : 0), 0);
     let x = x0 ?? Math.round((LW - total) / 2);
     const FADE = 0.3;
     const fadeText = (from) => { for (let k = from; k < this.texts.length; k++) this.texts[k].alpha = FADE; };
     parts.forEach((p, i) => {
-      if (i && typeof p !== 'number') x += 2;
-      if (typeof p === 'number') x += p;
+      if (i && typeof p !== 'number') x += GAP;
+      if (typeof p === 'number') x += p * TS;
       else if (typeof p === 'string') {
-        this.txt(p, x, y + 2.3, this.pal.dim);
+        this.txt(p, x, y + (small ? 1.6 : 2.3), this.pal.dim, TS);
         if (rowDone) fadeText(this.texts.length - 1);
-        x += this.tw(p);
+        else if (alpha < 1) this.texts[this.texts.length - 1].alpha = alpha;
+        x += this.tw(p, TS);
       } else {
         x = Math.round(x);
         const t0 = this.texts.length;
-        if (p.done) ctx.globalAlpha = FADE;
-        this.drawKey(ctx, x, y, keyW(p), p.k);
+        ctx.globalAlpha = p.done ? FADE : alpha;
+        this.drawKey(ctx, x, y, keyW(p), p.k, small);
         ctx.globalAlpha = 1;
         if (p.done) fadeText(t0);
+        else if (alpha < 1) for (let k = t0; k < this.texts.length; k++) this.texts[k].alpha = alpha;
         x += keyW(p);
       }
     });
@@ -738,8 +745,10 @@ export class Renderer {
     // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
     if (!ui.touch) {
       const space = { k: 'space', w: 25 };
-      this.keyHints(ctx, 143, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH']);
-      this.keyHints(ctx, 155, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA']);
+      // Dibuat kecil & pudar supaya tidak bersaing dengan menu (petunjuk lengkap ada di layar ? / CARA MAIN).
+      const HINT_ALPHA = 0.5;
+      this.keyHints(ctx, 145, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH'], null, false, HINT_ALPHA, true);
+      this.keyHints(ctx, 154, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA'], null, false, HINT_ALPHA, true);
     }
     if (ui.soundMode && ui.soundMode !== 'all') {
       this.txt(ui.soundMode === 'off' ? 'SUARA: MATI' : 'MUSIK: MATI', LW / 2, 168, P.dim, 1, 'center');
@@ -761,6 +770,7 @@ export class Renderer {
       case 'restart': return 'ULANG';
       case 'menu': return 'MENU UTAMA';
       case 'back': return 'KEMBALI';
+      case 'name': return ui.playerName ? `NAMA: ${ui.playerName}` : 'ISI NAMA';
       case 'sound': return `SUARA: ${SOUND[ui.soundMode] || 'SEMUA'}`;
       case 'theme': return `TEMA: ${ui.themeName || 'KLASIK'}`;
       default: return id.toUpperCase();
@@ -953,7 +963,6 @@ export class Renderer {
     const items = (ui.menuItems || ['sound', 'back']).map((id) => [id, this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 60, 96, 15);
     if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 130, this.pal.dim, 1, 'center');
-    if (!ui.touch) this.txt('M = SUARA   P = JEDA SAAT MAIN', LW / 2, 140, this.pal.dim, 1, 'center');
   }
 
   drawOver(ctx, ui) {
@@ -981,7 +990,7 @@ export class Renderer {
   drawLeaderboard(ctx, ui) {
     const P = this.pal, lb = ui.lb || {};
     if (ui.fromOver) this.dim(ctx, 0.92);
-    this.txt('PERINGKAT', LW / 2, 4, P.text, 2, 'center');
+    this.txt('PERINGKAT', LW / 2, 8, P.text, 2, 'center');   // jarak lega dari tepi atas, rapat ke tab
     this.button(ctx, 'tabWeekly', 'MINGGU INI', 6, 20, 72, 11, lb.tab === 'weekly');
     this.button(ctx, 'tabAll', 'SEPANJANG MASA', 82, 20, 72, 11, lb.tab === 'alltime');
 
@@ -1034,9 +1043,9 @@ export class Renderer {
   drawAchievements(ctx, ui) {
     const P = this.pal;
     this.dim(ctx, 0.6);
-    this.txt('PRESTASI', LW / 2, 4, P.text, 2, 'center');
+    this.txt('PRESTASI', LW / 2, 8, P.text, 2, 'center');    // jarak lega dari tepi atas, rapat ke daftar
     const list = ui.ach || [];
-    this.txt(`TROFI ${list.filter((a) => a.unlocked).length}/${list.length}`, LW / 2, 18, P.dim, 1, 'center');
+    this.txt(`TROFI ${list.filter((a) => a.unlocked).length}/${list.length}`, LW / 2, 20, P.dim, 1, 'center');
     // Satu kartu per prestasi: trofi di kiri, nama + deskripsi (dibungkus kalau kepanjangan).
     // Yang sudah terbuka diberi garis warna tingkat trofinya di tepi kiri.
     const LX = 6, LY = 27, LWD = 144, LHT = 127, GAP = 3, TX = LX + 20;

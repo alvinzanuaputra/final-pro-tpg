@@ -56,10 +56,15 @@ const CFG = {
 
   DANGER_Y: 2 * BLOCK,             // pasir di atas garis ini = bahaya
   DANGER_GRACE: 1.5,
+  SPAWN_WAIT: 1.5,                 // detik piece berikutnya boleh menunggu tempat muncul kosong sebelum kalah
   NEAR_MISS: BLOCK,                // prestasi NYARIS: clear saat pasir sampai ≤ 1 blok di bawah garis bahaya (atau lewat)
 
-  CLEAR_FLASH: 0.3,                // durasi kedip + hitstop saat clear
-  CLEAR_FLASH_PER_CHAIN: 0.04,
+  // Kedip + hitstop saat clear (lihat clearFlash di bawah). Selama kedip, tombol diabaikan.
+  CLEAR_FLASH: 0.3,                // chain 1
+  CLEAR_FLASH_PER_CHAIN: 0.04,     // tambahan per langkah chain...
+  CLEAR_FLASH_MAX: 0.5,            // ...sampai batas ini (tercapai di chain 6)
+  CLEAR_FLASH_FAST_CHAIN: 15,      // mulai chain ini kedip dipersingkat supaya chain panjang tidak tersendat
+  CLEAR_FLASH_FAST: 0.2,
   MAX_CHAIN_MULT: 8,
 
   DAS: 0.15,
@@ -69,16 +74,30 @@ const CFG = {
 // ------------------------------------------------------------ kesulitan per level
 // Kurva bergerigi (GDD 4.2): tiap level ke-5 adalah level BOSS (event jauh lebih sering,
 // kecepatan tidak ikut naik); level sesudahnya LEMBAH (kecepatan turun, event jarang).
-// Setelah kecepatan mentok (level 27) yang terus naik pelan hanya event dan batu.
+// Setelah kecepatan mentok (level 40) yang terus naik pelan hanya event dan batu.
 const FALL = [0.8, 0.72, 0.65, 0.58, 0.58, 0.55, 0.5, 0.455, 0.41, 0.41, 0.38, 0.35, 0.32,
   0.29, 0.29, 0.27, 0.25, 0.23, 0.21, 0.21, 0.2, 0.19, 0.18, 0.17, 0.17];   // detik per baris, level 1..25
-const FALL_MIN = 0.15;
+// Level 26..30 turun 0,01/level (0,16 → 0,12), lalu 0,11 di level 35 dan 0,10 (minimum) di level 40.
+function fallFor(level) {
+  if (level <= FALL.length) return FALL[level - 1];
+  if (level <= 30) return Math.round((FALL[FALL.length - 1] - (level - FALL.length) * 0.01) * 100) / 100;
+  if (level < 35) return 0.12;
+  if (level < 40) return 0.11;
+  return 0.10;
+}
 // Jeda antar event [min, maks] detik untuk level 1..20 (event pertama tetap EVENT_FIRST).
 const EVENT_GAPS = [[45, 75], [45, 75], [45, 70], [40, 65], [20, 30], [60, 90], [40, 60], [40, 60], [40, 60],
   [18, 25], [60, 90], [35, 50], [35, 50], [35, 50], [15, 22], [60, 90], [30, 45], [30, 45], [30, 45], [12, 18]];
 
 const isBossLevel = (level) => level % 5 === 0;
 const isTroughLevel = (level) => level > 1 && level % 5 === 1;
+
+// Lama kedip (detik) untuk langkah chain ke-n: naik pelan sampai batas, lalu dipersingkat di chain panjang.
+// Contoh: chain 1 = 0,30 · chain 6+ = 0,50 · chain 15+ = 0,20.
+function clearFlash(chain) {
+  if (chain >= CFG.CLEAR_FLASH_FAST_CHAIN) return CFG.CLEAR_FLASH_FAST;
+  return Math.min(CFG.CLEAR_FLASH_MAX, CFG.CLEAR_FLASH + CFG.CLEAR_FLASH_PER_CHAIN * (chain - 1));
+}
 
 function colorsForLevel(level) {
   if (level >= 12) return 5;
@@ -113,8 +132,7 @@ function eventGap(level) {
 // Semua angka kesulitan untuk satu level. Peluang batu/mesiu = peluang NYATA per piece.
 function levelConfig(level) {
   level = Math.max(1, Math.floor(level));
-  const fall = CFG.FALL_OVERRIDE > 0 ? CFG.FALL_OVERRIDE
-    : level <= FALL.length ? FALL[level - 1] : Math.max(FALL_MIN, FALL[FALL.length - 1] - (level - FALL.length) * 0.01);
+  const fall = CFG.FALL_OVERRIDE > 0 ? CFG.FALL_OVERRIDE : fallFor(level);
   return {
     fall, colors: colorsForLevel(level), stone: stoneChance(level), gun: gunChance(level),
     eventGap: eventGap(level), boss: isBossLevel(level), trough: isTroughLevel(level),
@@ -123,7 +141,7 @@ function levelConfig(level) {
 
 const STORAGE_PREFIX = 'sandtilt.';
 
-return { BLOCK, COLS, ROWS, W, H, MAT_SAND, MAT_STONE, MAT_GUN, CFG, isBossLevel, isTroughLevel, colorsForLevel, levelConfig, STORAGE_PREFIX };
+return { BLOCK, COLS, ROWS, W, H, MAT_SAND, MAT_STONE, MAT_GUN, CFG, isBossLevel, isTroughLevel, clearFlash, colorsForLevel, levelConfig, STORAGE_PREFIX };
 })();
 
 // ===================================================================== js/util.js
@@ -532,7 +550,7 @@ return { TYPES, SHAPES, Bag };
 
 // ===================================================================== js/game.js
 __mod["game"] = (function () {
-const { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig } = __mod["config"];
+const { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig, clearFlash } = __mod["config"];
 const { makeRng } = __mod["util"];
 const { Sand } = __mod["sim"];
 const { SHAPES, Bag } = __mod["pieces"];
@@ -572,13 +590,15 @@ class Game {
     this.tilt = { meter: 1, dir: 0, active: false, used: 0, cool: 0 };
     this.prevWant = 0;
     this.lastTiltAt = -99;
-    this.buffer = [];               // aksi yang ditekan saat hitstop, diproses setelahnya
 
     this.event = null;              // { type: 'quake'|'wind'|'force', dir, phase: 'warn'|'active', t }
     this.eventTimer = this.randRange(CFG.EVENT_FIRST);
     this.eventsSurvived = 0;
 
     this.danger = 0;
+    this.overflow = [];             // butir piece yang terkunci di atas papan, menunggu dituang masuk
+    this.pending = null;            // piece berikutnya yang menunggu tempat muncul kosong
+    this.spawnWait = 0;
     this.clearing = null;
     this.dirty = false;
     this.checkTimer = 0;
@@ -640,21 +660,29 @@ class Game {
   }
 
   spawn() {
-    const spec = this.next;
+    this.pending = this.next;
     this.next = this.makeSpec();
+    this.spawnWait = 0;
+    this.trySpawn();
+  }
+
+  // Munculkan piece yang menunggu. Kalau tempat muncul masih tertutup pasir yang sedang runtuh
+  // (atau masih ada butir antre di atas papan), tunggu dulu; baru kalah kalau tertutup terus
+  // selama CFG.SPAWN_WAIT detik (lihat update).
+  trySpawn() {
+    const spec = this.pending;
     const size = SHAPES[spec.type].size;
-    this.piece = {
+    const p = {
       type: spec.type, color: spec.color, mat: spec.mat, rot: 0,
       x: Math.floor((COLS - size) / 2) * BLOCK,
       y: spec.type === 'I' ? -BLOCK : 0,
       fall: 0, lock: 0, lockResets: 0, softCells: 0,
     };
-    if (this.collides(this.piece, this.piece.x, this.piece.y, 0)) {
-      this.piece = null;
-      this.gameOver('spawn');
-    } else {
-      this.events.emit('spawn', this.piece);
-    }
+    if (this.overflow.length || this.collides(p, p.x, p.y, 0)) { this.piece = null; return false; }
+    this.piece = p;
+    this.pending = null;
+    this.events.emit('spawn', p);
+    return true;
   }
 
   // Y terendah yang bisa dicapai piece (untuk ghost & hard drop).
@@ -777,22 +805,29 @@ class Game {
       }
     }
     if (e.t <= 0) {
-      this.events.emit('eventEnd', e);
-      this.event = null;
       this.eventsSurvived++;
+      this.events.emit('eventEnd', { ...e, survived: this.eventsSurvived });
+      this.event = null;
       this.eventTimer = this.randRange(levelConfig(this.level).eventGap);
     }
   }
 
   // Piece hancur jadi pasir.
   lockPiece(hard = false) {
+    // Chain = clear beruntun yang dipicu SATU penempatan. Piece baru mendarat → hitungan mulai lagi,
+    // jadi menjatuhkan piece terus-menerus (spam) tidak bisa menaikkan pengali chain.
+    if (this.chain > 0) { this.events.emit('chainEnd', this.chain); this.chain = 0; }
     const p = this.piece;
     const c = this.sand.cells, s = this.sand.shade, m = this.sand.mat;
-    let outOfTop = false;
     for (const [bx, by] of this.blocksOf(p)) {
       const cx = p.x + bx * BLOCK, cy = p.y + by * BLOCK;
       for (let yy = cy; yy < cy + BLOCK; yy++) {
-        if (yy < 0) { outOfTop = true; continue; }
+        if (yy < 0) {
+          // Bagian piece di atas papan tidak langsung kalah: butirnya antre dan dituang masuk begitu
+          // ada ruang (lihat pourOverflow). Kalah/tidaknya diputuskan garis bahaya seperti biasa.
+          for (let xx = cx; xx < cx + BLOCK; xx++) this.overflow.push({ x: xx, color: p.color, mat: p.mat });
+          continue;
+        }
         const row = yy * W;
         for (let xx = cx; xx < cx + BLOCK; xx++) {
           c[row + xx] = p.color;
@@ -806,8 +841,19 @@ class Game {
     this.dirty = true;
     this.events.emit('land', { x: p.x, y: p.y, color: p.color, mat: p.mat, hard });
     this.piece = null;
-    if (outOfTop) { this.gameOver('lockout'); return; }
     if (this.rules.spawn) this.spawn();
+  }
+
+  // Tuang butir antrean (bagian piece yang terkunci di atas papan) ke baris teratas yang kosong.
+  pourOverflow() {
+    if (!this.overflow.length) return;
+    const c = this.sand.cells, s = this.sand.shade, m = this.sand.mat;
+    this.overflow = this.overflow.filter((g) => {
+      if (c[g.x] !== 0) return true;
+      c[g.x] = g.color; m[g.x] = g.mat; s[g.x] = (this.rng() * 4) | 0;
+      this.dirty = true;
+      return false;
+    });
   }
 
   startClear(res) {
@@ -829,7 +875,7 @@ class Game {
     this.grainsCleared += grains;
     this.clears += res.bridges;
 
-    const dur = CFG.CLEAR_FLASH + CFG.CLEAR_FLASH_PER_CHAIN * (this.chain - 1);
+    const dur = clearFlash(this.chain);
     this.clearing = { cells: res.cells, t: dur, t0: dur };
     this.events.emit('clear', {
       points, grains, chain: this.chain, bridges: res.bridges, colors: res.colors,
@@ -890,18 +936,16 @@ class Game {
 
     if (this.breather > 0) this.breather -= dt;
 
-    // Hitstop: selama kedip clear, piece & pasir berhenti.
-    // Tombol yang ditekan disimpan dulu supaya tidak hilang.
+    // Hitstop: selama kedip clear, piece & pasir berhenti dan tombol DIABAIKAN (tidak ditumpuk),
+    // supaya setelah kedip piece tidak meloncat karena tekanan yang menumpuk. Tombol yang ditahan
+    // (turun pelan, miring) dibaca lagi dari keadaannya setelah kedip selesai.
     if (this.clearing) {
-      if (input.actions.length) this.buffer.push(...input.actions);
-      if (this.buffer.length > 8) this.buffer.splice(0, this.buffer.length - 8);
       this.clearing.t -= dt;
       if (this.clearing.t <= 0) this.finishClear();
       return;
     }
 
     let actions = input.actions;
-    if (this.buffer.length) { actions = this.buffer.concat(actions); this.buffer = []; }
     if (!this.rules.controls) { actions = []; input = { actions, soft: false, tilt: 0 }; }
 
     this.updateTilt(dt, input.tilt || 0);
@@ -954,6 +998,13 @@ class Game {
     if (quaking && this.sand.quakeMix(CFG.QUAKE_SWAPS) > 0) this.dirty = true;
     const moved = this.sand.step(this.effectiveTilt(), jitter);
     if (moved > 0) this.dirty = true;
+    this.pourOverflow();
+
+    // Piece berikutnya menunggu tempat muncul kosong (pasir yang baru runtuh belum turun).
+    if (this.pending && this.rules.spawn && !this.trySpawn()) {
+      this.spawnWait += dt;
+      if (this.spawnWait >= CFG.SPAWN_WAIT) { this.gameOver('spawn'); return; }
+    }
 
     // Cek jembatan
     this.checkTimer++;
@@ -970,7 +1021,7 @@ class Game {
     }
 
     // Garis bahaya
-    if (this.rules.danger && this.sand.anyAbove(CFG.DANGER_Y)) {
+    if (this.rules.danger && (this.overflow.length || this.sand.anyAbove(CFG.DANGER_Y))) {
       this.danger += dt;
       if (this.danger >= CFG.DANGER_GRACE) this.gameOver('danger');
     } else this.danger = 0;
@@ -1048,11 +1099,23 @@ const TEXT = compile({
   '>': '01000 00100 00010 00001 00010 00100 01000', '<': '00010 00100 01000 10000 01000 00100 00010',
   '_': '00000 00000 00000 00000 00000 00000 11111', '=': '00000 00000 11111 00000 11111 00000 00000',
   '^': '00100 01010 10001 00000 00000 00000 00000', '~': '00000 00000 01000 10101 00010 00000 00000',
+  // panah & spasi untuk tombol kecil di petunjuk kontrol (ketebalan sama dengan huruf)
+  '←': '00000 00100 01000 11111 01000 00100 00000', '→': '00000 00100 00010 11111 00010 00100 00000',
+  '↑': '00100 01110 10101 00100 00100 00100 00000', '↓': '00000 00100 00100 00100 10101 01110 00100',
 }, 5);
+// Glyph lebar (lebih dari 5 kolom): simbol spasi untuk tombol spasi kecil.
+const WIDE = { '␣': 11 };
+Object.assign(TEXT, compile({ '␣': '00000000000 00000000000 00000000000 00000000000 10000000001 10000000001 11111111111' }, 11));
+const adv = (ch) => (WIDE[ch] ?? 5) + 1;
 
 const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
 
-function textWidthPx(str, px) { return str.length === 0 ? 0 : (str.length * ADVANCE - 1) * px; }
+function textWidthPx(str, px) {
+  if (str.length === 0) return 0;
+  let w = 0;
+  for (const ch of str) w += adv(ch);
+  return (w - 1) * px;
+}
 
 // Gambar teks 5x7. x, y dalam piksel layar; px = ukuran satu titik glyph.
 function drawText(ctx, str, x, y, color, px, align = 'left') {
@@ -1061,10 +1124,11 @@ function drawText(ctx, str, x, y, color, px, align = 'left') {
   else if (align === 'right') x -= textWidthPx(str, px);
   x = Math.round(x); y = Math.round(y);
   ctx.fillStyle = color;
-  for (let n = 0; n < str.length; n++) {
-    const pts = TEXT[str[n]] || TEXT['?'];
-    const ox = x + n * ADVANCE * px;
+  let ox = x;
+  for (const ch of str) {
+    const pts = TEXT[ch] || TEXT['?'];
     for (let k = 0; k < pts.length; k += 2) ctx.fillRect(ox + pts[k] * px, y + pts[k + 1] * px, px, px);
+    ox += adv(ch) * px;
   }
 }
 
@@ -1126,7 +1190,7 @@ const PALETTES = {
 
 const SHADES = [1.12, 1.0, 0.91, 0.82];
 // warna garis tepi kartu prestasi per tingkat trofi (emas memakai warna aksen palet)
-const TIER_COLOR = { bronze: '#d08a4c', silver: '#c9cbe0', secret: '#b45ce0' };
+const TIER_COLOR = { bronze: '#d08a4c', silver: '#c9cbe0', legend: '#b45ce0', secret: '#b45ce0' };
 // panah pixel 5x5 untuk tombol keyboard di petunjuk kontrol
 const KEY_ARROWS = {
   left: ['..#..', '.#...', '#####', '.#...', '..#..'],
@@ -1136,6 +1200,8 @@ const KEY_ARROWS = {
   // simbol spasi ␣ (dipusatkan di tombol panjang)
   space: ['.....', '.....', '#.......#', '#.......#', '#########'],
 };
+// tombol kecil: panah & spasi digambar sebagai huruf font (font.js) supaya tebalnya sama dengan Q/E/P
+const KEY_GLYPHS = { left: '←', right: '→', up: '↑', down: '↓', space: '␣' };
 const EVENT_NAMES = { quake: 'GEMPA', wind: 'ANGIN', force: 'PAPAN MIRING' };
 
 function hexToRgb(hex) {
@@ -1287,7 +1353,7 @@ class Renderer {
         this.icons[t] = img;
       }
     }
-    const img = this.icons[tier] || this.icons.locked;
+    const img = this.icons[tier === 'legend' ? 'secret' : tier] || this.icons.locked;   // legend memakai trofi ungu
     if (img.complete && img.naturalWidth) ctx.drawImage(img, Math.round(x), Math.round(y), 12, 11);
     else { ctx.fillStyle = this.pal.accent; ctx.fillRect(Math.round(x) + 2, Math.round(y) + 1, 8, 8); }
   }
@@ -1714,8 +1780,8 @@ class Renderer {
 
   // ---------- petunjuk kontrol: tombol keyboard pixel ----------
   // Tombol 9 px tinggi: tepi terang bersudut terpotong, muka, dan bibir bawah gelap (kesan 3D).
-  drawKey(ctx, x, y, w, label) {
-    const P = this.pal, h = 9;
+  drawKey(ctx, x, y, w, label, small = false) {
+    const P = this.pal, h = small ? 7 : 9;
     ctx.fillStyle = P.dim;
     ctx.fillRect(x + 1, y, w - 2, h);
     ctx.fillRect(x, y + 1, w, h - 2);
@@ -1723,7 +1789,8 @@ class Renderer {
     ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
     ctx.fillStyle = P.frame;
     ctx.fillRect(x + 1, y + 1, w - 2, h - 3);
-    const arrow = KEY_ARROWS[label];
+    const arrow = small ? null : KEY_ARROWS[label];
+    if (small) label = KEY_GLYPHS[label] || label;
     if (arrow) {
       ctx.fillStyle = P.text;
       const aw = Math.max(...arrow.map((row) => row.length));
@@ -1732,34 +1799,38 @@ class Renderer {
         for (let rx = 0; rx < row.length; rx++) if (row[rx] === '#') ctx.fillRect(ax + rx, y + 1 + ry, 1, 1);
       });
     } else {
-      this.txt(label, x + w / 2, y + 1.6, P.text, 1, 'center', false);
+      this.txt(label, x + w / 2, y + (small ? 1.4 : 1.6), P.text, small ? 0.7 : 1, 'center', false);
     }
   }
 
   // parts: 'TEKS' | { k: 'Q' | 'left' | 'right' | 'up' | 'down', w? } | angka (jarak tambahan).
   // Baris dipusatkan di layar, atau rata kiri mulai x0 kalau diberikan.
   // Bagian bertanda done (tutorial: tombol sudah dicoba) digambar pudar; rowDone memudarkan teks barisnya juga.
-  keyHints(ctx, y, parts, x0 = null, rowDone = false) {
-    const keyW = (p) => p.w || (KEY_ARROWS[p.k] ? 9 : Math.max(9, Math.ceil(this.tw(p.k)) + 5));
-    const width = (p) => (typeof p === 'number' ? p : typeof p === 'string' ? this.tw(p) : keyW(p));
-    const total = parts.reduce((s, p, i) => s + width(p) + (i && typeof p !== 'number' ? 2 : 0), 0);
+  keyHints(ctx, y, parts, x0 = null, rowDone = false, alpha = 1, small = false) {
+    const TS = small ? 0.75 : 1, GAP = small ? 1.5 : 2;   // ukuran teks & jarak antar bagian
+    const keyW = (p) => (p.w ? (small ? Math.round(p.w * 0.7) : p.w)
+      : KEY_ARROWS[p.k] ? (small ? 7 : 9) : small ? Math.max(7, Math.ceil(this.tw(p.k, 0.7)) + 4) : Math.max(9, Math.ceil(this.tw(p.k)) + 5));
+    const width = (p) => (typeof p === 'number' ? p * TS : typeof p === 'string' ? this.tw(p, TS) : keyW(p));
+    const total = parts.reduce((s, p, i) => s + width(p) + (i && typeof p !== 'number' ? GAP : 0), 0);
     let x = x0 ?? Math.round((LW - total) / 2);
     const FADE = 0.3;
     const fadeText = (from) => { for (let k = from; k < this.texts.length; k++) this.texts[k].alpha = FADE; };
     parts.forEach((p, i) => {
-      if (i && typeof p !== 'number') x += 2;
-      if (typeof p === 'number') x += p;
+      if (i && typeof p !== 'number') x += GAP;
+      if (typeof p === 'number') x += p * TS;
       else if (typeof p === 'string') {
-        this.txt(p, x, y + 2.3, this.pal.dim);
+        this.txt(p, x, y + (small ? 1.6 : 2.3), this.pal.dim, TS);
         if (rowDone) fadeText(this.texts.length - 1);
-        x += this.tw(p);
+        else if (alpha < 1) this.texts[this.texts.length - 1].alpha = alpha;
+        x += this.tw(p, TS);
       } else {
         x = Math.round(x);
         const t0 = this.texts.length;
-        if (p.done) ctx.globalAlpha = FADE;
-        this.drawKey(ctx, x, y, keyW(p), p.k);
+        ctx.globalAlpha = p.done ? FADE : alpha;
+        this.drawKey(ctx, x, y, keyW(p), p.k, small);
         ctx.globalAlpha = 1;
         if (p.done) fadeText(t0);
+        else if (alpha < 1) for (let k = t0; k < this.texts.length; k++) this.texts[k].alpha = alpha;
         x += keyW(p);
       }
     });
@@ -1813,8 +1884,10 @@ class Renderer {
     // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
     if (!ui.touch) {
       const space = { k: 'space', w: 25 };
-      this.keyHints(ctx, 143, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH']);
-      this.keyHints(ctx, 155, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA']);
+      // Dibuat kecil & pudar supaya tidak bersaing dengan menu (petunjuk lengkap ada di layar ? / CARA MAIN).
+      const HINT_ALPHA = 0.5;
+      this.keyHints(ctx, 145, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH'], null, false, HINT_ALPHA, true);
+      this.keyHints(ctx, 154, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA'], null, false, HINT_ALPHA, true);
     }
     if (ui.soundMode && ui.soundMode !== 'all') {
       this.txt(ui.soundMode === 'off' ? 'SUARA: MATI' : 'MUSIK: MATI', LW / 2, 168, P.dim, 1, 'center');
@@ -1836,6 +1909,7 @@ class Renderer {
       case 'restart': return 'ULANG';
       case 'menu': return 'MENU UTAMA';
       case 'back': return 'KEMBALI';
+      case 'name': return ui.playerName ? `NAMA: ${ui.playerName}` : 'ISI NAMA';
       case 'sound': return `SUARA: ${SOUND[ui.soundMode] || 'SEMUA'}`;
       case 'theme': return `TEMA: ${ui.themeName || 'KLASIK'}`;
       default: return id.toUpperCase();
@@ -2028,7 +2102,6 @@ class Renderer {
     const items = (ui.menuItems || ['sound', 'back']).map((id) => [id, this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 60, 96, 15);
     if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 130, this.pal.dim, 1, 'center');
-    if (!ui.touch) this.txt('M = SUARA   P = JEDA SAAT MAIN', LW / 2, 140, this.pal.dim, 1, 'center');
   }
 
   drawOver(ctx, ui) {
@@ -2056,7 +2129,7 @@ class Renderer {
   drawLeaderboard(ctx, ui) {
     const P = this.pal, lb = ui.lb || {};
     if (ui.fromOver) this.dim(ctx, 0.92);
-    this.txt('PERINGKAT', LW / 2, 4, P.text, 2, 'center');
+    this.txt('PERINGKAT', LW / 2, 8, P.text, 2, 'center');   // jarak lega dari tepi atas, rapat ke tab
     this.button(ctx, 'tabWeekly', 'MINGGU INI', 6, 20, 72, 11, lb.tab === 'weekly');
     this.button(ctx, 'tabAll', 'SEPANJANG MASA', 82, 20, 72, 11, lb.tab === 'alltime');
 
@@ -2109,9 +2182,9 @@ class Renderer {
   drawAchievements(ctx, ui) {
     const P = this.pal;
     this.dim(ctx, 0.6);
-    this.txt('PRESTASI', LW / 2, 4, P.text, 2, 'center');
+    this.txt('PRESTASI', LW / 2, 8, P.text, 2, 'center');    // jarak lega dari tepi atas, rapat ke daftar
     const list = ui.ach || [];
-    this.txt(`TROFI ${list.filter((a) => a.unlocked).length}/${list.length}`, LW / 2, 18, P.dim, 1, 'center');
+    this.txt(`TROFI ${list.filter((a) => a.unlocked).length}/${list.length}`, LW / 2, 20, P.dim, 1, 'center');
     // Satu kartu per prestasi: trofi di kiri, nama + deskripsi (dibungkus kalau kepanjangan).
     // Yang sudah terbuka diberi garis warna tingkat trofinya di tepi kiri.
     const LX = 6, LY = 27, LWD = 144, LHT = 127, GAP = 3, TX = LX + 20;
@@ -2264,6 +2337,9 @@ class Input {
   }
 
   clear() { this.queue = []; }
+
+  // Geser-otomatis mulai lagi dari jeda awal (DAS), seperti tombol baru ditekan.
+  restartRepeat() { for (const a of REPEAT) this.repeat[a] = -CFG.DAS; }
 }
 
 return { Input };
@@ -2540,7 +2616,10 @@ const sfx = {
 
   // jingle
   levelUp() { play('jingle-level', { vol: 0.8 }); duck(0.3, 0.9); },
-  achievement(tier = 'bronze') { play('trophy-' + (buffers['trophy-' + tier] ? tier : 'bronze'), { vol: 0.85 }); duck(0.3, 0.7); },
+  achievement(tier = 'bronze') {
+    if (tier === 'legend') tier = 'secret';   // trofi ungu: suara sama
+    play('trophy-' + (buffers['trophy-' + tier] ? tier : 'bronze'), { vol: 0.85 }); duck(0.3, 0.7);
+  },
   material() { play('jingle-material', { vol: 0.7 }); },
   gameOver() { playMusic(null); play('jingle-gameover', { vol: 0.9 }); },
 };
@@ -2554,18 +2633,21 @@ const { store } = __mod["util"];
 
 // Deskripsi maksimal 30 karakter supaya muat SATU baris di semua ukuran layar
 // (kartu prestasi maksimal 3 baris: nama + deskripsi + hadiah).
-// tier: bronze | silver | gold | secret → menentukan ikon trofi (assets/image/trophy-*.svg).
+// tier: bronze | silver | gold | legend | secret → ikon trofi (assets/image/trophy-*.svg).
+// legend = trofi ungu yang TERLIHAT (ikon & suara sama dengan secret), untuk prestasi tersulit.
 const ACHIEVEMENTS = [
+  { id: 'tutorial', tier: 'bronze', name: 'MURID TELADAN', desc: 'SELESAIKAN TUTORIAL' },
   { id: 'first_bridge', tier: 'bronze', name: 'JEMBATAN PERTAMA', desc: 'CLEAR PERTAMA KALI' },
   { id: 'chain3', tier: 'silver', name: 'REAKSI BERANTAI', desc: 'CAPAI CHAIN X3' },
-  { id: 'chain5', tier: 'gold', name: 'BADAI PASIR', desc: 'CAPAI CHAIN X5' },
   { id: 'tilt_master', tier: 'silver', name: 'AHLI MIRING', desc: 'CLEAR < 1 DETIK SETELAH MIRING' },
-  { id: 'close_call', tier: 'silver', name: 'NYARIS!', desc: 'CLEAR SAAT DEKAT GARIS BAHAYA', reward: 'TEMA KERTAS' },
+  { id: 'close_call', tier: 'silver', name: 'NYARIS!', desc: 'CLEAR SAAT DEKAT GARIS BAHAYA' },
   { id: 'clean_board', tier: 'gold', name: 'PAPAN BERSIH', desc: 'KOSONGKAN PAPAN SETELAH CLEAR' },
   { id: 'boom', tier: 'bronze', name: 'BOOM!', desc: 'LEDAKKAN MESIU PERTAMA KALI' },
   { id: 'stone_breaker', tier: 'silver', name: 'PENGHANCUR BATU', desc: 'HANCURKAN BATU DENGAN LEDAKAN' },
   { id: 'no_tilt', tier: 'gold', name: 'TANGAN KOSONG', desc: 'LEVEL 5 TANPA MIRING' },
-  { id: 'marathon', tier: 'gold', name: 'MARATON', desc: 'CAPAI LEVEL 10' },
+  { id: 'survivor', tier: 'gold', name: 'TAHAN BANTING', desc: 'BERTAHAN 5 EVENT SEKALI MAIN' },
+  { id: 'marathon', tier: 'gold', name: 'MARATON', desc: 'CAPAI LEVEL 15' },
+  { id: 'chain5', tier: 'legend', name: 'BADAI PASIR', desc: 'CAPAI CHAIN X5', reward: 'TEMA KERTAS' },
   { id: 'quake', tier: 'secret', name: 'GOYANG DUMANG!', desc: 'MIRING KIRI-KANAN 6X < 2 DETIK', hidden: true, reward: 'TEMA NEON' },
   { id: 'counter', tier: 'secret', name: 'LAWAN ARUS', desc: 'TAHAN MIRING LAWAN ARAH PAPAN', hidden: true, reward: 'TEMA RETRO' },
 ];
@@ -2609,8 +2691,10 @@ class Achievements {
     });
     ev.on('levelUp', (d) => {
       if (d.level >= 5 && d.tiltsUsed === 0) this.unlock('no_tilt');
-      if (d.level >= 10) this.unlock('marathon');
+      if (d.level >= 15) this.unlock('marathon');
     });
+    // Event (gempa, angin, papan miring) yang selesai tanpa kalah, dihitung per game.
+    ev.on('eventEnd', (e) => { if (e.survived >= 5) this.unlock('survivor'); });
     // Gempa: 6 percobaan miring bergantian arah dalam 2 detik (charge tidak harus ada).
     ev.on('tiltAttempt', (dir) => {
       const now = performance.now();
@@ -3167,6 +3251,28 @@ const { Tutorial } = __mod["tutorial"];
 const { CFG, colorsForLevel, levelConfig } = __mod["config"];
 
 const STEP = 1 / 60;
+
+// Versi ATURAN SKOR (bukan versi aplikasi). Naikkan hanya kalau cara menghitung skor berubah
+// sehingga skor lama tidak sebanding lagi; kosongkan juga papan server pada saat yang sama
+// (Neon: DELETE FROM sandtilt_scores; DELETE FROM sandtilt_runs;).
+//   1 = chain lama (bisa dinaikkan dengan spam piece)   2 = chain dihitung per penempatan
+// Browser dengan versi lebih lama: skor terbaik, riwayat skor lokal, dan skor tertunda dikosongkan
+// sekali. Nama, token, prestasi, tema, suara, dan tutorial tidak disentuh.
+const SCORE_VERSION = 2;
+if (store.get('scoreVersion', 1) !== SCORE_VERSION) {
+  store.set('best', 0);
+  store.set('runs', []);
+  store.set('pending', null);
+  store.set('scoreVersion', SCORE_VERSION);
+}
+// Versi aturan PRESTASI. 2: BADAI PASIR (chain x5) sekarang berhadiah Tema Kertas, jadi yang didapat
+// dengan chain lama (bisa di-spam) dicabut sekali dan harus diraih ulang.
+const ACH_VERSION = 2;
+if (store.get('achVersion', 1) < ACH_VERSION) {
+  store.set('ach', store.get('ach', []).filter((id) => id !== 'chain5'));
+  store.set('achVersion', ACH_VERSION);
+}
+
 const canvas = document.getElementById('screen');
 const consoleEl = document.getElementById('console');
 const slotEl = document.getElementById('slot');
@@ -3181,7 +3287,7 @@ const events = new Emitter();
 const game = new Game(events);
 const renderer = new Renderer(canvas, events);
 const lb = new Leaderboard();
-const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', secret: 'TROFI RAHASIA!' };
+const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', legend: 'TROFI LEGENDA!', secret: 'TROFI RAHASIA!' };
 const ach = new Achievements(events, (def) => {
   renderer.showToast(TIER_TITLE[def.tier] || 'PRESTASI!', def.name, def.tier);
   sfx.achievement(def.tier);
@@ -3421,7 +3527,7 @@ function startGame() {
     game.numColors = colorsForLevel(TEST.level);
     game.eventTimer = Math.min(game.eventTimer, game.randRange(levelConfig(TEST.level).eventGap));
   }
-  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR & PRESTASI TIDAK DISIMPAN');
+  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR DAN PRESTASI TIDAK DISIMPAN');
   ach.sessionNew = 0;
   ui.over = null;
   ui.lbStatus = '';
@@ -3436,6 +3542,8 @@ function startGame() {
 // Bisa diulang dari ikon ? di layar judul → CARA MAIN → MAIN TUTORIAL.
 const tutorial = new Tutorial(game, events, () => {
   store.set('tutorialDone', true);
+  ach.disabled = TEST.on;        // selama tutorial prestasi dimatikan; buka khusus MURID TELADAN
+  ach.unlock('tutorial');
   input.enabled = false;
   input.releaseAll();
   sfx.levelUp();
@@ -3505,6 +3613,7 @@ function activate(id) {
       break;
     case 'ach': ui.ach = ach.list(); setScreen('ach'); break;
     case 'theme': toggleTheme(); break;
+    case 'name': askName(() => renderer.showToast('NAMA DISIMPAN', lb.name)); break;   // ganti nama (pengaturan)
     case 'sound': toggleMute(); break;
     case 'settings': setScreen('settings'); break;
     case 'credits': openCredits(); break;
@@ -3542,7 +3651,7 @@ const THEMES = [
   { id: 'kontras', name: 'KONTRAS', unlock: null },
   { id: 'retro', name: 'RETRO', unlock: 'counter' },      // hadiah prestasi rahasia LAWAN ARUS
   { id: 'neon', name: 'NEON', unlock: 'quake' },          // hadiah prestasi rahasia GOYANG DUMANG!
-  { id: 'kertas', name: 'KERTAS', unlock: 'close_call' }, // hadiah prestasi NYARIS!
+  { id: 'kertas', name: 'KERTAS', unlock: 'chain5' },     // hadiah prestasi BADAI PASIR (dulu NYARIS!)
 ];
 function themeUnlocked(t) {
   if (!t.unlock || renderer.paletteName === t.id) return true;
@@ -3588,7 +3697,7 @@ function titleItems() { return MENUS.title; }
 // Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
   if (screen === 'pause') return tutorial.active ? ['resume', 'skipTut', 'menu'] : ['resume', 'restart', 'sound', 'theme', 'menu'];
-  if (screen === 'settings') return ['sound', 'theme', 'back'];
+  if (screen === 'settings') return ['sound', 'theme', 'name', 'back'];
   return MENUS[screen];
 }
 function toggleTheme() {
@@ -3821,7 +3930,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 let last = performance.now(), acc = 0, heart = 0, dangerOn = false;
 
 function tick() {
-  game.update(STEP, input.poll(STEP));
+  const inp = input.poll(STEP);
+  // Selama kedip clear tombol diabaikan; geser-otomatis (tombol ← → ditahan) mulai ulang dari jeda
+  // awal, jadi piece tidak langsung meluncur begitu kedip selesai.
+  if (game.clearing) input.restartRepeat();
+  game.update(STEP, inp);
   tutorial.update(STEP);
 }
 

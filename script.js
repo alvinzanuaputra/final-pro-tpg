@@ -3221,6 +3221,21 @@ const { Tutorial } = __mod["tutorial"];
 const { CFG, colorsForLevel, levelConfig } = __mod["config"];
 
 const STEP = 1 / 60;
+
+// Versi ATURAN SKOR (bukan versi aplikasi). Naikkan hanya kalau cara menghitung skor berubah
+// sehingga skor lama tidak sebanding lagi; kosongkan juga papan server pada saat yang sama
+// (Neon: DELETE FROM sandtilt_scores; DELETE FROM sandtilt_runs;).
+//   1 = chain lama (bisa dinaikkan dengan spam piece)   2 = chain dihitung per penempatan
+// Browser dengan versi lebih lama: skor terbaik, riwayat skor lokal, dan skor tertunda dikosongkan
+// sekali. Nama, token, prestasi, tema, suara, dan tutorial tidak disentuh.
+const SCORE_VERSION = 2;
+if (store.get('scoreVersion', 1) !== SCORE_VERSION) {
+  store.set('best', 0);
+  store.set('runs', []);
+  store.set('pending', null);
+  store.set('scoreVersion', SCORE_VERSION);
+}
+
 const canvas = document.getElementById('screen');
 const consoleEl = document.getElementById('console');
 const slotEl = document.getElementById('slot');

@@ -15,7 +15,8 @@ export class Game {
     this.seed = seed >>> 0;
     // Aturan yang bisa dimatikan mode tutorial (lihat tutorial.js). Game normal: semua aktif.
     // fall: null = kecepatan level, 0 = piece melayang (tidak jatuh sendiri), > 0 = detik per baris.
-    this.rules = { events: true, danger: true, level: true, spawn: true, fall: null };
+    // controls: false = input pemain diabaikan (tutorial sedang memperagakan sesuatu).
+    this.rules = { events: true, danger: true, level: true, spawn: true, fall: null, controls: true };
     this.rng = makeRng(this.seed);
     this.sand = new Sand(this.rng);
     this.bag = new Bag(this.rng);
@@ -367,6 +368,7 @@ export class Game {
 
     let actions = input.actions;
     if (this.buffer.length) { actions = this.buffer.concat(actions); this.buffer = []; }
+    if (!this.rules.controls) { actions = []; input = { actions, soft: false, tilt: 0 }; }
 
     this.updateTilt(dt, input.tilt || 0);
     this.updateEvent(dt);

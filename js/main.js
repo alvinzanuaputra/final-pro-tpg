@@ -191,7 +191,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (ui.screen === 'start') { goTitle(); return; }
   const [lx, ly] = toLogical(e);
   const id = renderer.hit(lx, ly);
-  if (id) { sfx.click(); activate(id); return; }
+  if (id) { if (id !== 'none') { sfx.click(); activate(id); } return; }   // 'none': bagian dalam modal
   if (inScrollArea(lx, ly)) {
     drag = { id: e.pointerId, y: ly, target: ui.scroll.target, lastY: ly, lastT: e.timeStamp, v: 0 };
     try { canvas.setPointerCapture(e.pointerId); } catch { /* abaikan */ }

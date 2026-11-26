@@ -326,7 +326,11 @@ export class Renderer {
       ctx.fillStyle = p.white && p.life > p.max * 0.75 ? '#ffffff' : p.color;
       ctx.fillRect(Math.round(p.x), Math.round(p.y), p.w || 1, 1);
     }
-    for (const f of this.floats) this.txt(f.text, f.x, f.y - f.t * 12, f.color, 1, 'center');
+    for (const f of this.floats) {
+      // teks melayang (skor, LEDAKAN!, BATU HANCUR!) digeser supaya tidak terpotong tepi layar
+      const hw = this.tw(f.text) / 2;
+      this.txt(f.text, Math.max(hw + 1, Math.min(LW - hw - 1, f.x)), f.y - f.t * 12, f.color, 1, 'center');
+    }
     if (this.flash > 0) {
       ctx.fillStyle = `rgba(255,255,255,${Math.min(0.35, this.flash * 1.5)})`;
       ctx.fillRect(BX, BY, W, H);
@@ -776,34 +780,54 @@ export class Renderer {
     if (!ui.touch) this.txt('H', x - 3, y + (s - this.th()) / 2, P.dim, 1, 'right');
   }
 
-  // CARA MAIN: ringkasan satu layar + tombol ke tutorial interaktif.
+  // CARA MAIN: modal di atas layar judul (bukan halaman baru). Isi rata tengah, kotak di tengah layar.
+  // Klik/tap di luar kotak = tutup. Tombol: MAIN TUTORIAL | KEMBALI.
   drawHelp(ctx, ui) {
     const P = this.pal;
-    this.dim(ctx, 0.75);
-    this.txt('CARA MAIN', LW / 2, 4, P.text, 2, 'center');
+    this.drawTitle(ctx, { ...ui, focus: -1 });   // layar judul tetap terlihat di belakang modal
+    this.buttons = [];                             // tombol judul tidak bisa diklik selama modal terbuka
+    this.dim(ctx, 0.7);
+    this.buttons.push({ id: 'back', x: 0, y: 0, w: LW, h: LH });   // area luar kotak
+
     const tilt = ui.touch ? 'TAHAN L / R' : 'TAHAN Q / E';
-    const rows = [
-      ['1', 'BALOK YANG MENDARAT HANCUR JADI PASIR.'],
-      ['2', 'SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN: JEMBATAN HILANG, DAPAT SKOR.'],
-      ['3', `${tilt} UNTUK MEMIRINGKAN PAPAN. PASIR IKUT MENGALIR.`],
-      ['4', 'MESIU MELEDAK SAAT KENA CLEAR. BATU TIDAK LONGSOR. LIHAT DULU DI NEXT.'],
-      ['5', 'PASIR LEWAT GARIS MERAH ATAS = KALAH.'],
+    const items = [
+      'BALOK YANG MENDARAT HANCUR JADI PASIR.',
+      'SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN: JEMBATAN HILANG, DAPAT SKOR.',
+      `${tilt} UNTUK MEMIRINGKAN PAPAN. PASIR IKUT MENGALIR.`,
+      'MESIU MELEDAK SAAT KENA CLEAR. BATU KAKU, TIDAK LONGSOR.',
+      'PASIR LEWAT GARIS MERAH ATAS = KALAH.',
     ];
-    const X = 12, TX = 20, MW = LW - TX - 8;
-    let y = 22;
-    for (const [n, text] of rows) {
-      this.txt(n, X, y, P.accent);
-      for (const line of this.wrap(text, MW)) { this.txt(line, TX, y, P.text); y += 7; }
-      y += 3;
-      if (n === '2') { this.drawBridgeDemo(ctx, Math.round(LW / 2 - 28), y); y += 23; }
-    }
-    this.txt('RUNTUHAN JADI JEMBATAN BARU = CHAIN!', LW / 2, y + 1, P.dim, 1, 'center');
-    const items = ui.menuItems || ['tutorial', 'back'];
-    const bw = [78, 52], gap = 4, total = bw[0] + bw[1] + gap;
-    let bx = Math.floor((LW - total) / 2);
-    items.forEach((id, k) => {
-      this.button(ctx, id, this.menuLabel(id, ui), bx, Math.min(158, Math.round(y) + 16), bw[k], 11, ui.focus === k);
-      bx += bw[k] + gap;
+    const BW = 146, PAD = 6, MW = BW - 2 * PAD, LINE = 7, GAP = 6, DEMO = 22;
+    const wrapped = items.map((t) => this.wrap(t, MW));
+    const titleH = this.th(1.5) + 6;
+    const bodyH = wrapped.reduce((h, ls) => h + ls.length * LINE + GAP, 0) + DEMO;
+    const BH = Math.round(PAD + titleH + bodyH + 2 + 11 + PAD);
+    const bx = Math.floor((LW - BW) / 2), by = Math.max(2, Math.floor((LH - BH) / 2));
+    this.layer();
+    this.buttons.push({ id: 'none', x: bx, y: by, w: BW, h: BH });   // klik di dalam kotak tidak menutup
+    ctx.fillStyle = P.frame; ctx.fillRect(bx, by, BW, BH);
+    ctx.fillStyle = P.bg; ctx.fillRect(bx + 1, by + 1, BW - 2, BH - 2);
+
+    const cx = LW / 2;
+    let y = by + PAD;
+    this.txt('CARA MAIN', cx, y, P.accent, 1.5, 'center');
+    y += titleH;
+    wrapped.forEach((lines, k) => {
+      for (const line of lines) { this.txt(line, cx, y, P.text, 1, 'center'); y += LINE; }
+      if (k === 1) { this.drawBridgeDemo(ctx, Math.round(cx - 28), y + 1); y += DEMO; }
+      if (k < wrapped.length - 1) {                  // titik pemisah antar poin
+        ctx.fillStyle = P.frame;
+        ctx.fillRect(Math.round(cx) - 1, Math.round(y + GAP / 2 - 1), 2, 1);
+      }
+      y += GAP;
+    });
+    y += 2;
+    const ids = ui.menuItems || ['tutorial', 'back'];
+    const bws = [78, 52], gap = 4, total = bws[0] + bws[1] + gap;
+    let x = Math.floor((LW - total) / 2);
+    ids.forEach((id, k) => {
+      this.button(ctx, id, this.menuLabel(id, ui), x, Math.round(y), bws[k], 11, ui.focus === k);
+      x += bws[k] + gap;
     });
   }
 
@@ -848,6 +872,14 @@ export class Renderer {
       const x = BX + m.arrowX, y = BY + m.arrowY + bob;
       ctx.fillRect(x - 1, y - 6, 2, 4);
       for (let r = 0; r < 4; r++) ctx.fillRect(x - 4 + r, y - 2 + r, 8 - 2 * r, 1);
+    }
+    if (m.box) {
+      // garis putus-putus berkedip di sekeliling area yang perlu diperhatikan (tumpukan batu langkah MESIU)
+      const b = m.box, x0 = BX + b.x, y0 = BY + b.y, x1 = x0 + b.w - 1, y1 = y0 + b.h - 1;
+      const off = Math.floor(this.time * 8) % 4;
+      ctx.fillStyle = on ? P.accent : P.text;
+      for (let x = x0 + off; x <= x1; x += 4) { ctx.fillRect(x, y0 - 1, 2, 1); ctx.fillRect(x, y1 + 1, 2, 1); }
+      for (let y = y0 + off; y <= y1; y += 4) ctx.fillRect(x1 + 1, y, 1, 2);
     }
     if (m.push) {
       // tiga panah ke kanan menuju dinding kanan

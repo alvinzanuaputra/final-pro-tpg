@@ -659,16 +659,30 @@ export class Renderer {
 
   // parts: 'TEKS' | { k: 'Q' | 'left' | 'right' | 'up' | 'down', w? } | angka (jarak tambahan).
   // Baris dipusatkan di layar, atau rata kiri mulai x0 kalau diberikan.
-  keyHints(ctx, y, parts, x0 = null) {
+  // Bagian bertanda done (tutorial: tombol sudah dicoba) digambar pudar; rowDone memudarkan teks barisnya juga.
+  keyHints(ctx, y, parts, x0 = null, rowDone = false) {
     const keyW = (p) => p.w || (KEY_ARROWS[p.k] ? 9 : Math.max(9, Math.ceil(this.tw(p.k)) + 5));
     const width = (p) => (typeof p === 'number' ? p : typeof p === 'string' ? this.tw(p) : keyW(p));
     const total = parts.reduce((s, p, i) => s + width(p) + (i && typeof p !== 'number' ? 2 : 0), 0);
     let x = x0 ?? Math.round((LW - total) / 2);
+    const FADE = 0.3;
+    const fadeText = (from) => { for (let k = from; k < this.texts.length; k++) this.texts[k].alpha = FADE; };
     parts.forEach((p, i) => {
       if (i && typeof p !== 'number') x += 2;
       if (typeof p === 'number') x += p;
-      else if (typeof p === 'string') { this.txt(p, x, y + 2.3, this.pal.dim); x += this.tw(p); }
-      else { x = Math.round(x); this.drawKey(ctx, x, y, keyW(p), p.k); x += keyW(p); }
+      else if (typeof p === 'string') {
+        this.txt(p, x, y + 2.3, this.pal.dim);
+        if (rowDone) fadeText(this.texts.length - 1);
+        x += this.tw(p);
+      } else {
+        x = Math.round(x);
+        const t0 = this.texts.length;
+        if (p.done) ctx.globalAlpha = FADE;
+        this.drawKey(ctx, x, y, keyW(p), p.k);
+        ctx.globalAlpha = 1;
+        if (p.done) fadeText(t0);
+        x += keyW(p);
+      }
     });
   }
 
@@ -772,7 +786,8 @@ export class Renderer {
       ['1', 'BALOK YANG MENDARAT HANCUR JADI PASIR.'],
       ['2', 'SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN: JEMBATAN HILANG, DAPAT SKOR.'],
       ['3', `${tilt} UNTUK MEMIRINGKAN PAPAN. PASIR IKUT MENGALIR.`],
-      ['4', 'PASIR LEWAT GARIS MERAH ATAS = KALAH.'],
+      ['4', 'MESIU MELEDAK SAAT KENA CLEAR. BATU TIDAK LONGSOR. LIHAT DULU DI NEXT.'],
+      ['5', 'PASIR LEWAT GARIS MERAH ATAS = KALAH.'],
     ];
     const X = 12, TX = 20, MW = LW - TX - 8;
     let y = 22;
@@ -853,6 +868,16 @@ export class Renderer {
       ctx.fillRect(PX + k * 6, 19, 4, 4);
     }
     let y = 28;
+    if (v.mat && v.mat.mat) {
+      // contoh satu blok material (batu/mesiu) tepat di kanan judul
+      const n = 8, bx = Math.ceil(PX + this.tw(v.title, 1.5) + 4), by = Math.round(y + (this.th(1.5) - n) / 2);
+      for (let ly = 0; ly < n; ly++) {
+        for (let lx = 0; lx < n; lx++) {
+          ctx.fillStyle = this.texel(v.mat.mat, v.mat.color, lx, ly, n).s;
+          ctx.fillRect(bx + lx, by + ly, 1, 1);
+        }
+      }
+    }
     this.txt(v.title, PX, y, v.good ? P.accent : P.text, 1.5);
     y += this.th(1.5) + 4;
     const lines = this.wrap(v.body, MW);
@@ -861,7 +886,7 @@ export class Renderer {
       y += 7;
     });
     y += 4;
-    for (const row of v.keys) { this.keyHints(ctx, y, row, PX); y += 12; }
+    for (const row of v.keys) { this.keyHints(ctx, y, row.parts, PX, row.done); y += 12; }
     this.txt(ui.touch ? 'MENU: LEWATI' : 'ESC: LEWATI', PX, 158, P.dim);
     this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
   }
@@ -873,7 +898,7 @@ export class Renderer {
     let y = 48;
     const lines = [
       'JANGAN BIARKAN PASIR LEWAT GARIS MERAH ATAS.',
-      'MATERIAL DAN GANGGUAN BARU DIJELASKAN SAAT MUNCUL.',
+      'GANGGUAN (GEMPA, ANGIN, PAPAN MIRING) SELALU DIPERINGATKAN 3 DETIK SEBELUMNYA.',
     ];
     for (const text of lines) {
       for (const line of this.wrap(text, LW - 24)) { this.txt(line, LW / 2, y, P.text, 1, 'center'); y += 8; }

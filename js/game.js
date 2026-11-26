@@ -134,7 +134,7 @@ export class Game {
     if (!p || this.collides(p, p.x + dx, p.y, p.rot)) return false;
     p.x += dx;
     this.touchLock();
-    this.events.emit('move');
+    this.events.emit('move', dx);
     return true;
   }
 
@@ -148,7 +148,7 @@ export class Game {
       if (!this.collides(p, p.x + kx, p.y + ky, rot)) {
         p.x += kx; p.y += ky; p.rot = rot;
         this.touchLock();
-        this.events.emit('rotate');
+        this.events.emit('rotate', dir);
         return true;
       }
     }

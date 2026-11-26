@@ -141,6 +141,8 @@ window.__stage = (cfg) => {
   }
   game.danger = cfg.danger || 0;     // < 0 = waktu tambahan di atas garis bahaya sebelum pemicu
   window.__S = S; window.__CFG = cfg; window.__hold = false; window.__quiet = 0; window.__fired = null;
+  // jeda awal seperti pemain yang baru melihat piece, lalu mulai bergerak
+  window.__human = { next: (cfg.steerFrom || 0) + 8 + Math.floor(Math.random() * 10), target: 4, retarget: 0, wobbled: false };
 };
 
 const KEY = (code) => { window.dispatchEvent(new KeyboardEvent('keydown', { code, key: code }));
@@ -151,15 +153,27 @@ window.__frame = (f) => {
   const cfg = window.__CFG; if (!cfg) return;
   const T = window.__T, game = window.sandtilt.game, trig = cfg.plan.trigger || {};
   const p = game.piece;
-  // kemudikan piece ke target (satu tombol tiap 4 frame); begitu sampai, jatuhkan (paling lambat fireAt)
+  const H = window.__human;
+  // Piece pemicu: diarahkan ke target seperti pemain (jeda antar tombol tidak rata, kadang salah arah dulu lalu
+  // dikoreksi); begitu sampai, jatuhkan (paling lambat fireAt).
   let ready = false;
   if (trig.piece && p && window.__fired == null && f >= cfg.steerFrom) {
     const [, , , col, rot] = trig.piece;
     ready = p.rot === rot && p.x === col * 8;
-    if (!ready && (f - cfg.steerFrom) % 4 === 0) {
-      if (p.rot !== rot) KEY('ArrowUp');
+    if (!ready && f >= H.next) {
+      if (!H.wobbled && Math.random() < 0.5) { KEY(Math.random() < 0.5 ? 'ArrowLeft' : 'ArrowRight'); H.wobbled = true; }
+      else if (p.rot !== rot) KEY('ArrowUp');
       else KEY(p.x < col * 8 ? 'ArrowRight' : 'ArrowLeft');
+      H.next = f + 3 + Math.floor(Math.random() * 6);
     }
+  } else if (p && !(trig.piece && window.__fired == null) && f >= H.next) {
+    // Piece lain (event, setelah pemicu): pemain "menimbang" posisi -> geser ke kolom incaran, sesekali putar.
+    if (f >= H.retarget) { H.target = Math.floor(Math.random() * 8); H.retarget = f + 40 + Math.floor(Math.random() * 50); }
+    const r = Math.random();
+    if (r < 0.3) KEY('ArrowUp');
+    else if (p.x !== H.target * 8) KEY(p.x < H.target * 8 ? 'ArrowRight' : 'ArrowLeft');
+    else if (r < 0.5) KEY('ArrowUp');
+    H.next = f + 5 + Math.floor(Math.random() * 12);
   }
   if (window.__fired == null && (f === cfg.fireAt || (ready && f >= (cfg.fireMin ?? cfg.steerFrom)))) {
     window.__fired = f;

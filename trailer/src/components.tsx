@@ -96,7 +96,7 @@ export const SlamText: React.FC<{
             const p = spring({ frame: frame - n++ * 5, fps, config: { damping: 12, stiffness: 220, mass: 0.6 } });
             return (
               <GameText key={i} text={w} px={px} color={colors[li] || C.text}
-                style={{ transform: `scale(${interpolate(p, [0, 1], [2.2, 1])})`, opacity: Math.min(1, p * 3) }} />
+                style={{ transform: `scale(${interpolate(p, [0, 1], [1.6, 1])})`, opacity: Math.min(1, p * 3) }} />
             );
           })}
         </div>

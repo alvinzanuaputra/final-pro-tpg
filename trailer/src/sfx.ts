@@ -18,6 +18,10 @@ export function soundsFor([name, d]: GameEvent): { sounds: Sound[]; duck?: Duck 
       else s.push({ file: pick('land-sand', 3), vol: 0.9 });
       return { sounds: s };
     }
+    case 'move':
+      return { sounds: [{ file: 'move', vol: 0.35 }] };
+    case 'rotate':
+      return { sounds: [{ file: 'rotate', vol: 0.5 }] };
     case 'tiltStart':
       return { sounds: [{ file: 'tilt-slide', vol: 0.8 }, { file: 'force-creak', vol: 0.25, rate: 1.4 }] };
     case 'clear': {

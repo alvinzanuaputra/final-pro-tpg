@@ -15,9 +15,9 @@ Target: trailer gaya **Steam / showcase** (halaman toko, itch.io, presentasi kel
 
 ## 2. Storyboard
 
-> **Versi yang dirender (draft 1, 46 dtk, 26 bar musik 132 BPM):** crumble (close-up → TETRIS THAT CRUMBLES) · tilt (TILT THE BOARD) ·
+> **Versi yang dirender (draft 2, 29 dtk, tempo cepat: tiap adegan berhenti +-1 dtk setelah momen utamanya):** crumble (close-up → TETRIS THAT CRUMBLES) · tilt (TILT THE BOARD) ·
 > bridge (CONNECT WALL TO WALL) · chain ×4 + trofi (CHAIN REACTIONS, angka X2-X4) · mesiu (GUNPOWDER GOES BOOM) ·
-> gempa / angin / papan miring (masing-masing 1,5 bar) · kartu 12 ACHIEVEMENTS / GLOBAL LEADERBOARD / KEYBOARD OR TOUCH ·
+> gempa / angin / papan miring (masing-masing 1,5 bar) · kartu UNLOCK ACHIEVEMENTS / GLOBAL LEADERBOARD / KEYBOARD OR TOUCH ·
 > nyaris kalah (ONE PIECE FROM DEFEAT, detak jantung) · logo. Timeline lengkap: `trailer/src/Trailer.tsx` (`BEATS`).
 > Tabel di bawah adalah rencana awal 60 dtk.
 

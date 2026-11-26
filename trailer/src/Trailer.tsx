@@ -7,7 +7,7 @@ import { Duck, heartbeat, Sound, soundsFor, trophySound } from './sfx';
 import { C, FPS, sec } from './theme';
 
 // ----------------------------------------------------------------------------------------------------------------
-// Trailer SandTilt (~45 dtk). Semua potongan jatuh di batas bar musik game (132 BPM -> 1 bar = 4 ketuk).
+// Trailer SandTilt. Potongan jatuh di ketukan musik game (132 BPM -> 1 bar = 4 ketuk).
 // Storyboard: docs/TRAILER-plan.md. Brand: docs/BRAND.md (logo, warna, huruf dari kode game).
 // ----------------------------------------------------------------------------------------------------------------
 const BAR = (4 * 60 / 132) * FPS;                       // 109.09 frame
@@ -20,21 +20,28 @@ type Beat =
   | { kind: 'card'; bars: number }
   | { kind: 'outro'; bars: number };
 
+// Tempo cepat: tiap adegan selesai +-1 detik setelah momen utamanya (clear/ledakan terakhir), lalu langsung pindah.
+// Panjang dibulatkan ke atas ke ketukan musik (1/4 bar) supaya potongan tetap di irama.
+const fit = (from: number, end: number) => Math.ceil((end - from) / (BAR / 4)) / 4;     // -> jumlah bar
+const AFTER = sec(1);
+const ev = (shot: string, name: string, filter?: (d: Record<string, unknown>) => boolean) => eventFrames(SHOT[shot], name, filter);
+const lastHit = (shot: string) => Math.max(...ev(shot, 'clear'), ...ev(shot, 'explode'));
+
 const BEATS: Beat[] = [
-  // berhenti sebelum clear pertama di rekaman (frame 277), supaya papan masih berisi saat teks muncul
-  { kind: 'shot', shot: 'crumble', from: 0, bars: 2.5, side: 'right', closeup: true, text: 'TETRIS THAT\nCRUMBLES', textAt: bars(1.3) },
-  { kind: 'shot', shot: 'tilt', from: 10, bars: 2.5, side: 'left', text: 'TILT\nTHE BOARD', textAt: 12, flashIn: true },
-  { kind: 'shot', shot: 'bridge', from: 0, bars: 2, side: 'right', text: 'CONNECT\nWALL TO WALL', textAt: 4 },
-  { kind: 'shot', shot: 'chain', from: 0, bars: 3.5, side: 'left', text: 'CHAIN\nREACTIONS', textAt: 4, counter: true,
-    trophy: { at: 66, tier: 'silver' } },
-  { kind: 'shot', shot: 'gunpowder', from: 0, bars: 3, side: 'right', text: 'GUNPOWDER\nGOES BOOM', textAt: 26, flashIn: true },
-  { kind: 'shot', shot: 'quake', from: 0, bars: 1.5, side: 'left', text: 'THE GROUND\nSHAKES', textAt: 8 },
-  { kind: 'shot', shot: 'wind', from: 15, bars: 1.5, side: 'right', text: 'THE WIND\nPUSHES', textAt: 4 },
-  { kind: 'shot', shot: 'force', from: 30, bars: 1.5, side: 'left', text: 'THE BOARD\nTIPS OVER', textAt: 4 },
+  // intro: dua piece mendarat (close-up lalu mundur), berhenti sebelum clear pertama di rekaman
+  { kind: 'shot', shot: 'crumble', from: 20, bars: fit(20, 196), side: 'right', closeup: true, text: 'TETRIS THAT\nCRUMBLES', textAt: 108 },
+  { kind: 'shot', shot: 'tilt', from: 0, bars: fit(0, lastHit('tilt') + AFTER), side: 'left', text: 'TILT\nTHE BOARD', textAt: 4, flashIn: true },
+  { kind: 'shot', shot: 'bridge', from: 0, bars: fit(0, ev('bridge', 'clear')[0] + AFTER), side: 'right', text: 'CONNECT\nWALL TO WALL', textAt: 4 },
+  { kind: 'shot', shot: 'chain', from: 0, bars: fit(0, lastHit('chain') + AFTER), side: 'left', text: 'CHAIN\nREACTIONS', textAt: 4, counter: true,
+    trophy: { at: ev('chain', 'clear', (d) => d.chain === 3)[0], tier: 'silver' } },
+  { kind: 'shot', shot: 'gunpowder', from: 0, bars: fit(0, lastHit('gunpowder') + AFTER), side: 'right', text: 'GUNPOWDER\nGOES BOOM', textAt: 4, flashIn: true },
+  { kind: 'shot', shot: 'quake', from: 0, bars: fit(0, ev('quake', 'eventStart')[0] + sec(1.2)), side: 'left', text: 'THE GROUND\nSHAKES', textAt: 4 },
+  { kind: 'shot', shot: 'wind', from: 0, bars: fit(0, ev('wind', 'windPush')[1] + sec(0.4)), side: 'right', text: 'THE WIND\nPUSHES', textAt: 4 },
+  { kind: 'shot', shot: 'force', from: 0, bars: fit(0, lastHit('force') + sec(0.6)), side: 'left', text: 'THE BOARD\nTIPS OVER', textAt: 4 },
   { kind: 'card', bars: 1.5 },
-  { kind: 'shot', shot: 'save', from: 0, bars: 3, side: 'right', text: 'ONE PIECE\nFROM DEFEAT', textAt: 2, heartbeatUntil: 49,
-    flashIn: true },
-  { kind: 'outro', bars: 3 },
+  { kind: 'shot', shot: 'save', from: 0, bars: fit(0, lastHit('save') + AFTER), side: 'right', text: 'ONE PIECE\nFROM DEFEAT', textAt: 2,
+    heartbeatUntil: ev('save', 'clear')[0], flashIn: true },
+  { kind: 'outro', bars: 2.5 },
 ];
 
 // posisi mulai tiap beat
@@ -105,7 +112,7 @@ function camFor(b: Extract<Beat, { kind: 'shot' }>) {
     for (const h of hits) if (f >= h && f < h + 18) punch = Math.max(punch, 0.05 * (1 - (f - h) / 18));
     const drift = interpolate(f, [0, len], [1, 1.035]);   // dorongan pelan supaya gambar hidup
     if (b.closeup) {
-      const t = interpolate(f, [bars(0.9), bars(1.3)], [0, 1], { ...ease, easing: (x) => x * x * (3 - 2 * x) });
+      const t = interpolate(f, [76, 110], [0, 1], { ...ease, easing: (x) => x * x * (3 - 2 * x) });
       return {
         x: interpolate(t, [0, 1], [BOARD.x + BOARD.w / 2, baseX]),
         y: interpolate(t, [0, 1], [BOARD.y + BOARD.h * 0.8, SRC_H / 2]),
@@ -160,7 +167,7 @@ const Card: React.FC<{ len: number }> = ({ len }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const tiers = ['bronze', 'silver', 'gold', 'secret'];
-  const lines: [string, string][] = [['12 ACHIEVEMENTS', C.text], ['GLOBAL LEADERBOARD', C.accent], ['KEYBOARD OR TOUCH', C.dim]];
+  const lines: [string, string][] = [['UNLOCK ACHIEVEMENTS', C.text], ['GLOBAL LEADERBOARD', C.accent], ['KEYBOARD OR TOUCH', C.dim]];
   const out = interpolate(f, [len - 8, len], [1, 0], ease);
   return (
     <AbsoluteFill style={{ opacity: out }}>
@@ -186,7 +193,6 @@ const Card: React.FC<{ len: number }> = ({ len }) => {
 const Outro: React.FC = () => {
   const frame = useCurrentFrame();
   const sub = interpolate(frame, [sec(0.9), sec(1.3)], [0, 1], ease);
-  const credit = interpolate(frame, [sec(1.6), sec(2)], [0, 1], ease);
   return (
     <AbsoluteFill>
       <SandRain unit={8} />
@@ -194,9 +200,6 @@ const Outro: React.FC = () => {
       <AbsoluteFill style={{ alignItems: 'center', top: 560, opacity: sub, transform: `translateY(${(1 - sub) * 20}px)` }}>
         <GameText text="PLAY FREE IN YOUR BROWSER" px={7} color={C.text} />
         <GameText text="SANDTILT.VERCEL.APP" px={6} color={C.accent} style={{ marginTop: 30 }} />
-      </AbsoluteFill>
-      <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 70, opacity: credit }}>
-        <GameText text="MADE BY AZHAR AND ALVIN" px={4} color={C.dim} />
       </AbsoluteFill>
     </AbsoluteFill>
   );

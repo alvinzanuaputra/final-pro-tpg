@@ -17,6 +17,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const GAME_ROOT = resolve(HERE, '..', '..');            // root repo (index.html game)
 const OUT_ROOT = resolve(HERE, '..', 'public', 'footage');
 const FPS = 60;
+const window_stage = (cfg) => window.__stage(cfg);
 const ALL_ACH = ['first_bridge', 'chain3', 'chain5', 'tilt_master', 'close_call', 'clean_board', 'boom', 'stone_breaker',
   'no_tilt', 'marathon', 'quake', 'counter'];
 export const DEFAULT_STORAGE = { ach: ALL_ACH, seenMats: [1, 2], best: 152340 };
@@ -57,6 +58,11 @@ async function captureShot(browser, base, shot) {
   await page.waitForFunction(() => window.sandtilt && window.advanceTime);
   await page.evaluate(() => { window.sandtilt.startGame(); window.__hookEvents(); });
   if (shot.setup) await page.evaluate(shot.setup);
+  if (shot.plan) {
+    const plan = JSON.parse(await readFile(join(HERE, 'plans', `${shot.plan}.json`), 'utf8'));
+    await page.evaluate(window_stage, { plan, steerFrom: shot.steerFrom ?? 0, fireAt: shot.fireAt, fireMin: shot.fireMin, tiltFrames: shot.tiltFrames,
+      score: shot.score, spawn: shot.spawn, danger: shot.danger, event: shot.event });
+  }
   await page.evaluate(() => { window.__EV.length = 0; });
 
   const dir = join(OUT_ROOT, shot.name);
@@ -74,18 +80,20 @@ async function captureShot(browser, base, shot) {
   let n = 0;
   for (let f = 0; f < total; f++) {
     const acts = byFrame.get(f) || [];
-    const res = await page.evaluate(({ acts, dt, grab }) => {
+    const res = await page.evaluate(({ acts, dt, grab, f }) => {
+      window.__frame && window.__frame(f);
       for (const [kind, code] of acts) {
         if (kind !== 'up') window.dispatchEvent(new KeyboardEvent('keydown', { code, key: code }));
         if (kind !== 'down') window.dispatchEvent(new KeyboardEvent('keyup', { code, key: code }));
       }
       window.advanceTime(dt);
+      window.__after && window.__after(f);
       const st = JSON.parse(window.render_game_to_text());
       const ev = window.__EV.splice(0);
       return { png: grab ? document.getElementById('screen').toDataURL('image/png') : null,
         st: { score: st.score, chain: st.chain, clears: st.clears, level: st.level, grains: st.grains,
           explosions: st.materials.explosions, state: st.state, clearing: st.clearing, ev } };
-    }, { acts, dt: 1000 / FPS, grab: !DRY && f >= shot.warmup });
+    }, { acts, dt: 1000 / FPS, grab: !DRY && f >= shot.warmup, f });
     if (f >= shot.warmup) {
       if (res.png) await writeFile(join(dir, `${String(n).padStart(4, '0')}.png`), Buffer.from(res.png.split(',')[1], 'base64'));
       log.push(res.st);

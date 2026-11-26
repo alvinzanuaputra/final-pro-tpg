@@ -1,65 +1,193 @@
-// Disuntikkan ke halaman game saat rekam (bukan bagian game). Membuat susunan papan siap pakai untuk shot trailer.
-// Koordinat dalam butir: papan 80 x 160, origin kiri-atas. Warna 1..5 = merah, kuning, hijau, biru, ungu.
-// Material: 0 pasir, 1 batu, 2 mesiu.
+// Disuntikkan ke halaman game saat rekam/cari (bukan bagian game, kode game tidak diubah).
+// Papan dibangun dengan MENJATUHKAN PIECE SUNGGUHAN (pecah jadi pasir oleh simulasi game), bukan menggambar pasir,
+// supaya susunannya alami seperti hasil bermain.
+//
+// "plan" = { seed, level, colors, score, clears, pieces: [[type, color, mat, col, rot], ...] }
+//   col = kolom blok kiri (0..9), rot = 0..3, mat 0 pasir / 1 batu / 2 mesiu. Warna 1..5.
 window.__T = (() => {
-  const W = 80, H = 160;
-  const g = () => window.sandtilt.game;
-  let s = 99;
-  const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const STEP = 1 / 60;
+  const NO_INPUT = { actions: [], soft: false, tilt: 0 };
 
-  const T = {
-    W, H,
-    /** Kosongkan papan dan bekukan event acak (bisa dipicu manual dengan T.event). */
-    clear() {
-      g().sand.reset();
-      g().eventTimer = 1e9;
-      g().event = null;
-      g().dirty = true;
-      return T;
-    },
-    /** Isi persegi [x0,x1) x [y0,y1) dengan warna c dan material mat. */
-    rect(x0, y0, x1, y1, c, mat = 0) {
-      const sand = g().sand;
-      for (let y = Math.max(0, y0); y < Math.min(H, y1); y++)
-        for (let x = Math.max(0, x0); x < Math.min(W, x1); x++) {
-          const i = y * W + x;
-          sand.cells[i] = c; sand.mat[i] = c ? mat : 0; sand.shade[i] = (rnd() * 4) | 0;
-        }
-      g().dirty = true;
-      return T;
-    },
-    /** Gundukan pasir: puncak di (cx, top), lebar dasar 2*half, sampai lantai bawah `bottom`. */
-    mound(cx, top, half, bottom, c, mat = 0) {
-      for (let x = cx - half; x < cx + half; x++) {
-        const h = Math.round((1 - Math.abs(x + 0.5 - cx) / half) * (bottom - top));
-        T.rect(x, bottom - h, x + 1, bottom, c, mat);
-      }
-      return T;
-    },
-    /** Ganti piece aktif (dan berikutnya). type I O T S Z J L, x dalam kolom blok 0..9. */
-    piece(type, color, mat = 0, col = null, rot = 0) {
-      const game = g();
-      game.next = { type, color, mat };
-      game.spawn();
-      if (col !== null) game.piece.x = col * 8;
-      game.piece.rot = rot;
-      return T;
-    },
-    next(type, color, mat = 0) { g().next = { type, color, mat }; return T; },
-    /** Set level/warna aktif (untuk HUD). */
-    level(n, colors) { g().level = n; if (colors) g().numColors = colors; return T; },
-    score(n) { g().score = n; return T; },
-    /** Jumlah clear sejauh ini (level naik tiap 5 clear) -> atur supaya level naik di momen yang diinginkan. */
-    clears(n) { g().clears = n; return T; },
-    /** Picu event: 'quake' | 'wind' | 'force', arah -1/1, langsung fase peringatan. */
-    event(type, dir = 1, warn = 3) {
-      g().event = { type, dir, phase: 'warn', t: warn, push: 0 };
-      g().events.emit('eventWarn', g().event);
-      return T;
-    },
-  };
-  return T;
+  // RNG yang state-nya bisa disalin (mulberry32), dipasang ke game supaya cabang percobaan bisa diulang persis.
+  function makeRng(seed) {
+    const r = () => {
+      r.s = (r.s + 0x6d2b79f5) | 0;
+      let t = Math.imul(r.s ^ (r.s >>> 15), 1 | r.s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    r.s = seed | 0;
+    return r;
+  }
+
+  /** Siapkan game untuk dibangun: rng tetap, level/warna/skor, event acak dibekukan, papan kosong. */
+  function prepare(game, plan) {
+    const rng = makeRng(plan.seed);
+    game.rng = game.sand.rng = game.bag.rng = rng;
+    game.sand.reset();                 // juga tick = 0 (arah pindai pasir bergantian per tick)
+    game.time = 0;
+    game.tilt = { meter: 1, dir: 0, active: false, used: 0, cool: 0 };
+    game.prevWant = 0;
+    game.lastTiltAt = -99;
+    game.buffer = [];
+    game.explosions = 0;
+    game.breather = 0;
+    game.checkTimer = 0;
+    game.level = plan.level || 1;
+    game.numColors = plan.colors || 3;
+    game.score = plan.score || 0;
+    game.clears = plan.clears || 0;
+    game.chain = 0;
+    game.clearing = null;
+    game.event = null;
+    game.eventTimer = 1e9;
+    game.piece = null;
+    game.danger = 0;
+    return rng;
+  }
+
+  /** Taruh satu piece di kolom/rotasi tertentu lalu jatuhkan. false kalau posisinya tidak valid. */
+  function place(game, [type, color, mat, col, rot]) {
+    game.next = { type, color, mat };
+    game.spawn();
+    const p = game.piece;
+    if (!p) return false;
+    p.rot = rot;
+    p.x = col * 8;
+    if (game.collides(p, p.x, p.y, p.rot)) { game.piece = null; return false; }
+    game.hardDrop();
+    game.piece = null;           // piece berikutnya ditahan selama pasir mengendap
+    return true;
+  }
+
+  /** Jalankan simulasi tanpa piece sampai pasir diam (atau batas frame). */
+  function settle(game, maxFrames = 240) {
+    let quiet = 0;
+    for (let f = 0; f < maxFrames; f++) {
+      game.update(STEP, NO_INPUT);
+      game.piece = null;
+      game.danger = 0;           // selama membangun, garis bahaya diabaikan (pemain belum "ada")
+      if (game.state !== 'play') return false;
+      quiet = !game.clearing && !game.dirty && game.chain === 0 ? quiet + 1 : 0;
+      if (quiet > 20) return true;
+    }
+    return true;
+  }
+
+  /** Bangun papan dari plan. Mengembalikan false kalau game over di tengah jalan. */
+  function build(game, plan) {
+    prepare(game, plan);
+    for (const pc of plan.pieces) {
+      if (!place(game, pc)) return false;
+      if (!settle(game)) return false;
+    }
+    settle(game, 120);
+    return true;
+  }
+
+  // Salinan LENGKAP keadaan game (semua angka/boolean + tilt + papan + rng + tick), supaya setiap percobaan
+  // dan rekaman mulai dari keadaan yang identik.
+  function snapshot(game) {
+    const s = game.sand, prim = {};
+    for (const k of Object.keys(game)) { const v = game[k]; if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') prim[k] = v; }
+    return { prim, tilt: { ...game.tilt }, cells: s.cells.slice(), mat: s.mat.slice(), shade: s.shade.slice(),
+      rng: game.rng.s, tick: s.tick };
+  }
+  function restore(game, snap) {
+    const s = game.sand;
+    s.cells.set(snap.cells); s.mat.set(snap.mat); s.shade.set(snap.shade);
+    s.tick = snap.tick;
+    game.rng.s = snap.rng;
+    Object.assign(game, snap.prim);
+    game.tilt = { ...snap.tilt };
+    game.clearing = null; game.event = null; game.piece = null; game.buffer = [];
+  }
+
+  /** Game terpisah (tanpa layar/suara) untuk mencari plan. Event dicatat ke game.log. */
+  function offscreen() {
+    const Game = window.sandtilt.game.constructor;
+    const log = [];
+    const g = new Game({ emit: (name, d) => log.push([name, d]), on() {} });
+    g.log = log;
+    return g;
+  }
+
+  return { STEP, NO_INPUT, makeRng, prepare, place, settle, build, snapshot, restore, offscreen };
 })();
+
+// ------------------------------------------------------------ rekam: papan dari plan + pemicu yang dimainkan
+// cfg = { plan, warm: frame, steerFrom, fireAt, tiltFrames, score }
+//  - papan dibangun dari plan (piece sungguhan), lalu piece pemicu muncul di atas dan DIGERAKKAN dengan tombol
+//    ke kolom/rotasi target (seperti pemain), lalu di frame fireAt dijatuhkan.
+//  - Tepat sebelum dijatuhkan, rng + tick dikembalikan ke kondisi saat pencarian -> hasil (chain, ledakan) sama persis.
+//  - Selama rangkaian clear berlangsung piece berikutnya ditahan (seperti pencarian), lalu muncul lagi.
+window.__stage = (cfg) => {
+  const T = window.__T, game = window.sandtilt.game;
+  // bangun papan tanpa memancarkan event: tidak ada angka skor, partikel, suara, atau banner sisa pembangunan
+  const ev = game.events, emit = ev.emit;
+  ev.emit = () => {};
+  T.build(game, cfg.plan);
+  ev.emit = emit;
+  if (cfg.score != null) game.score = cfg.score;
+  const S = T.snapshot(game);
+  const trig = cfg.plan.trigger;
+  if (trig && trig.piece) { game.next = { type: trig.piece[0], color: trig.piece[1], mat: trig.piece[2] }; game.spawn(); }
+  else if (cfg.spawn !== false) game.spawn();
+  game.gravityInterval = () => 0.9;  // piece pemicu turun pelan selama diarahkan (pasir tidak terpengaruh)
+  if (cfg.event) {                   // event pengganggu langsung fase peringatan
+    const [type, dir, warn] = cfg.event;
+    game.event = { type, dir, phase: 'warn', t: warn, push: 0 };
+    game.events.emit('eventWarn', game.event);
+  }
+  game.danger = cfg.danger || 0;     // < 0 = waktu tambahan di atas garis bahaya sebelum pemicu
+  window.__S = S; window.__CFG = cfg; window.__hold = false; window.__quiet = 0; window.__fired = null;
+};
+
+const KEY = (code) => { window.dispatchEvent(new KeyboardEvent('keydown', { code, key: code }));
+  window.dispatchEvent(new KeyboardEvent('keyup', { code, key: code })); };
+
+/** Dipanggil tiap frame SEBELUM advanceTime. f = frame sejak mulai (termasuk warmup). */
+window.__frame = (f) => {
+  const cfg = window.__CFG; if (!cfg) return;
+  const T = window.__T, game = window.sandtilt.game, trig = cfg.plan.trigger || {};
+  const p = game.piece;
+  // kemudikan piece ke target (satu tombol tiap 4 frame); begitu sampai, jatuhkan (paling lambat fireAt)
+  let ready = false;
+  if (trig.piece && p && window.__fired == null && f >= cfg.steerFrom) {
+    const [, , , col, rot] = trig.piece;
+    ready = p.rot === rot && p.x === col * 8;
+    if (!ready && (f - cfg.steerFrom) % 4 === 0) {
+      if (p.rot !== rot) KEY('ArrowUp');
+      else KEY(p.x < col * 8 ? 'ArrowRight' : 'ArrowLeft');
+    }
+  }
+  if (window.__fired == null && (f === cfg.fireAt || (ready && f >= (cfg.fireMin ?? cfg.steerFrom)))) {
+    window.__fired = f;
+    const S = window.__S;
+    T.restore(game, S);              // keadaan persis seperti saat pencarian
+    if (cfg.score != null) game.score = cfg.score;
+    delete game.gravityInterval;     // kembali ke kecepatan level
+    game.piece = null;
+    if (trig.piece) {
+      T.place(game, trig.piece);
+      game.piece = null;
+    }
+    if (trig.tilt) window.dispatchEvent(new KeyboardEvent('keydown', { code: trig.tilt < 0 ? 'KeyQ' : 'KeyE', key: 'x' }));
+    window.__hold = true; window.__quiet = 0;
+  }
+  if (trig.tilt && f === window.__fired + (cfg.tiltFrames || 110))
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: trig.tilt < 0 ? 'KeyQ' : 'KeyE', key: 'x' }));
+};
+
+/** Dipanggil tiap frame SESUDAH advanceTime: tahan piece sampai rangkaian clear selesai. */
+window.__after = (f) => {
+  const cfg = window.__CFG; if (!cfg || !window.__hold) return;
+  const game = window.sandtilt.game;
+  game.piece = null;
+  window.__quiet = !game.clearing && !game.dirty && game.chain === 0 ? window.__quiet + 1 : 0;
+  const tiltDone = !(cfg.plan.trigger || {}).tilt || f > window.__fired + (cfg.tiltFrames || 110);
+  if (window.__quiet > 20 && tiltDone) { window.__hold = false; game.spawn(); }
+};
 
 // Catat semua event game per frame (untuk SFX yang pas di Remotion).
 window.__EV = [];

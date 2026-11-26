@@ -26,7 +26,7 @@ export const SHOTS = [
     name: 'crumble',
     seed: 123,
     warmup: 30,
-    frames: 360,
+    frames: 420,
     actions: [
       ...drop(40, -4),
       ...drop(100, 3, 1),
@@ -34,18 +34,21 @@ export const SHOTS = [
       ...drop(220, -2, 2),
       ...drop(280, 4),
       ...drop(340, -1, 1),
+      ...drop(400, 2),
     ],
   },
   // ---- Shot di bawah ini memakai papan ALAMI dari capture/plans/*.json (hasil search.mjs):
   // papan dibangun dari piece acak sungguhan, lalu pemicunya dimainkan (piece diarahkan dengan tombol, atau tilt ditahan).
-  { name: 'tilt', plan: 'tilt', seed: 7, warmup: 90, steerFrom: 90, fireAt: 120, frames: 220, score: 4180 },
+  { name: 'tilt', plan: 'tilt', seed: 7, warmup: 90, steerFrom: 90, fireAt: 120, frames: 300, score: 4180 },
+  // jembatan pertama (papan chain x3 cadangan), dipakai untuk "CONNECT WALL TO WALL"
+  { name: 'bridge', plan: 'chain-s101', seed: 13, warmup: 90, steerFrom: 92, fireAt: 160, frames: 220, score: 7320 },
   {
-    name: 'chain', plan: 'chain-s202', seed: 11, warmup: 90, steerFrom: 92, fireAt: 160, frames: 330, score: 12450,
+    name: 'chain', plan: 'chain-s202', seed: 11, warmup: 90, steerFrom: 92, fireAt: 160, frames: 420, score: 12450,
     // trofi "REAKSI BERANTAI" (chain x3) sengaja belum terbuka -> toast muncul di tengah chain
     storage: { ach: ['first_bridge', 'chain3', 'chain5', 'tilt_master', 'close_call', 'clean_board', 'boom', 'stone_breaker', 'no_tilt', 'marathon', 'quake', 'counter'].filter((a) => a !== 'chain3') },
   },
-  { name: 'gunpowder', plan: 'gunpowder', seed: 21, warmup: 90, steerFrom: 92, fireAt: 160, frames: 240, score: 28760 },
-  { name: 'save', plan: 'save', seed: 61, warmup: 50, steerFrom: 52, fireAt: 72, frames: 260, score: 87340, danger: -0.6 },
+  { name: 'gunpowder', plan: 'gunpowder', seed: 21, warmup: 90, steerFrom: 92, fireAt: 160, frames: 360, score: 28760 },
+  { name: 'save', plan: 'save', seed: 61, warmup: 50, steerFrom: 52, fireAt: 72, frames: 340, score: 87340, danger: -0.6 },
   // event pengganggu di papan alami
   { name: 'quake', plan: 'board', seed: 31, warmup: 60, frames: 200, score: 21300, event: ['quake', 1, 1.5] },
   { name: 'wind', plan: 'board', seed: 41, warmup: 60, frames: 240, score: 9870, event: ['wind', 1, 1.4] },

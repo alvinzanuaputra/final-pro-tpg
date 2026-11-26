@@ -13,7 +13,15 @@ Target: trailer gaya **Steam / showcase** (halaman toko, itch.io, presentasi kel
 | Musik | `assets/music/game.mp3` (orisinal) + SFX game asli | Bebas lisensi, identitas game konsisten |
 | Penutup | Logo SANDTILT + "Play free in your browser" + URL `sandtilt.vercel.app` | CTA jelas |
 
-## 2. Storyboard (60 dtk, mengikuti ketukan musik)
+## 2. Storyboard
+
+> **Versi yang dirender (draft 1, 46 dtk, 26 bar musik 132 BPM):** crumble (close-up → TETRIS THAT CRUMBLES) · tilt (TILT THE BOARD) ·
+> bridge (CONNECT WALL TO WALL) · chain ×4 + trofi (CHAIN REACTIONS, angka X2-X4) · mesiu (GUNPOWDER GOES BOOM) ·
+> gempa / angin / papan miring (masing-masing 1,5 bar) · kartu 12 ACHIEVEMENTS / GLOBAL LEADERBOARD / KEYBOARD OR TOUCH ·
+> nyaris kalah (ONE PIECE FROM DEFEAT, detak jantung) · logo. Timeline lengkap: `trailer/src/Trailer.tsx` (`BEATS`).
+> Tabel di bawah adalah rencana awal 60 dtk.
+
+### Rencana awal (60 dtk, mengikuti ketukan musik)
 
 | Waktu | Shot | Teks di layar | Audio |
 |---|---|---|---|

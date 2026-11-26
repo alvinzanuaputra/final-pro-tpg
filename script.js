@@ -1099,11 +1099,23 @@ const TEXT = compile({
   '>': '01000 00100 00010 00001 00010 00100 01000', '<': '00010 00100 01000 10000 01000 00100 00010',
   '_': '00000 00000 00000 00000 00000 00000 11111', '=': '00000 00000 11111 00000 11111 00000 00000',
   '^': '00100 01010 10001 00000 00000 00000 00000', '~': '00000 00000 01000 10101 00010 00000 00000',
+  // panah & spasi untuk tombol kecil di petunjuk kontrol (ketebalan sama dengan huruf)
+  '←': '00000 00100 01000 11111 01000 00100 00000', '→': '00000 00100 00010 11111 00010 00100 00000',
+  '↑': '00100 01110 10101 00100 00100 00100 00000', '↓': '00000 00100 00100 00100 10101 01110 00100',
 }, 5);
+// Glyph lebar (lebih dari 5 kolom): simbol spasi untuk tombol spasi kecil.
+const WIDE = { '␣': 11 };
+Object.assign(TEXT, compile({ '␣': '00000000000 00000000000 00000000000 00000000000 10000000001 10000000001 11111111111' }, 11));
+const adv = (ch) => (WIDE[ch] ?? 5) + 1;
 
 const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
 
-function textWidthPx(str, px) { return str.length === 0 ? 0 : (str.length * ADVANCE - 1) * px; }
+function textWidthPx(str, px) {
+  if (str.length === 0) return 0;
+  let w = 0;
+  for (const ch of str) w += adv(ch);
+  return (w - 1) * px;
+}
 
 // Gambar teks 5x7. x, y dalam piksel layar; px = ukuran satu titik glyph.
 function drawText(ctx, str, x, y, color, px, align = 'left') {
@@ -1112,10 +1124,11 @@ function drawText(ctx, str, x, y, color, px, align = 'left') {
   else if (align === 'right') x -= textWidthPx(str, px);
   x = Math.round(x); y = Math.round(y);
   ctx.fillStyle = color;
-  for (let n = 0; n < str.length; n++) {
-    const pts = TEXT[str[n]] || TEXT['?'];
-    const ox = x + n * ADVANCE * px;
+  let ox = x;
+  for (const ch of str) {
+    const pts = TEXT[ch] || TEXT['?'];
     for (let k = 0; k < pts.length; k += 2) ctx.fillRect(ox + pts[k] * px, y + pts[k + 1] * px, px, px);
+    ox += adv(ch) * px;
   }
 }
 
@@ -1187,6 +1200,8 @@ const KEY_ARROWS = {
   // simbol spasi ␣ (dipusatkan di tombol panjang)
   space: ['.....', '.....', '#.......#', '#.......#', '#########'],
 };
+// tombol kecil: panah & spasi digambar sebagai huruf font (font.js) supaya tebalnya sama dengan Q/E/P
+const KEY_GLYPHS = { left: '←', right: '→', up: '↑', down: '↓', space: '␣' };
 const EVENT_NAMES = { quake: 'GEMPA', wind: 'ANGIN', force: 'PAPAN MIRING' };
 
 function hexToRgb(hex) {
@@ -1765,8 +1780,8 @@ class Renderer {
 
   // ---------- petunjuk kontrol: tombol keyboard pixel ----------
   // Tombol 9 px tinggi: tepi terang bersudut terpotong, muka, dan bibir bawah gelap (kesan 3D).
-  drawKey(ctx, x, y, w, label) {
-    const P = this.pal, h = 9;
+  drawKey(ctx, x, y, w, label, small = false) {
+    const P = this.pal, h = small ? 7 : 9;
     ctx.fillStyle = P.dim;
     ctx.fillRect(x + 1, y, w - 2, h);
     ctx.fillRect(x, y + 1, w, h - 2);
@@ -1774,7 +1789,8 @@ class Renderer {
     ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
     ctx.fillStyle = P.frame;
     ctx.fillRect(x + 1, y + 1, w - 2, h - 3);
-    const arrow = KEY_ARROWS[label];
+    const arrow = small ? null : KEY_ARROWS[label];
+    if (small) label = KEY_GLYPHS[label] || label;
     if (arrow) {
       ctx.fillStyle = P.text;
       const aw = Math.max(...arrow.map((row) => row.length));
@@ -1783,34 +1799,38 @@ class Renderer {
         for (let rx = 0; rx < row.length; rx++) if (row[rx] === '#') ctx.fillRect(ax + rx, y + 1 + ry, 1, 1);
       });
     } else {
-      this.txt(label, x + w / 2, y + 1.6, P.text, 1, 'center', false);
+      this.txt(label, x + w / 2, y + (small ? 1.4 : 1.6), P.text, small ? 0.7 : 1, 'center', false);
     }
   }
 
   // parts: 'TEKS' | { k: 'Q' | 'left' | 'right' | 'up' | 'down', w? } | angka (jarak tambahan).
   // Baris dipusatkan di layar, atau rata kiri mulai x0 kalau diberikan.
   // Bagian bertanda done (tutorial: tombol sudah dicoba) digambar pudar; rowDone memudarkan teks barisnya juga.
-  keyHints(ctx, y, parts, x0 = null, rowDone = false) {
-    const keyW = (p) => p.w || (KEY_ARROWS[p.k] ? 9 : Math.max(9, Math.ceil(this.tw(p.k)) + 5));
-    const width = (p) => (typeof p === 'number' ? p : typeof p === 'string' ? this.tw(p) : keyW(p));
-    const total = parts.reduce((s, p, i) => s + width(p) + (i && typeof p !== 'number' ? 2 : 0), 0);
+  keyHints(ctx, y, parts, x0 = null, rowDone = false, alpha = 1, small = false) {
+    const TS = small ? 0.75 : 1, GAP = small ? 1.5 : 2;   // ukuran teks & jarak antar bagian
+    const keyW = (p) => (p.w ? (small ? Math.round(p.w * 0.7) : p.w)
+      : KEY_ARROWS[p.k] ? (small ? 7 : 9) : small ? Math.max(7, Math.ceil(this.tw(p.k, 0.7)) + 4) : Math.max(9, Math.ceil(this.tw(p.k)) + 5));
+    const width = (p) => (typeof p === 'number' ? p * TS : typeof p === 'string' ? this.tw(p, TS) : keyW(p));
+    const total = parts.reduce((s, p, i) => s + width(p) + (i && typeof p !== 'number' ? GAP : 0), 0);
     let x = x0 ?? Math.round((LW - total) / 2);
     const FADE = 0.3;
     const fadeText = (from) => { for (let k = from; k < this.texts.length; k++) this.texts[k].alpha = FADE; };
     parts.forEach((p, i) => {
-      if (i && typeof p !== 'number') x += 2;
-      if (typeof p === 'number') x += p;
+      if (i && typeof p !== 'number') x += GAP;
+      if (typeof p === 'number') x += p * TS;
       else if (typeof p === 'string') {
-        this.txt(p, x, y + 2.3, this.pal.dim);
+        this.txt(p, x, y + (small ? 1.6 : 2.3), this.pal.dim, TS);
         if (rowDone) fadeText(this.texts.length - 1);
-        x += this.tw(p);
+        else if (alpha < 1) this.texts[this.texts.length - 1].alpha = alpha;
+        x += this.tw(p, TS);
       } else {
         x = Math.round(x);
         const t0 = this.texts.length;
-        if (p.done) ctx.globalAlpha = FADE;
-        this.drawKey(ctx, x, y, keyW(p), p.k);
+        ctx.globalAlpha = p.done ? FADE : alpha;
+        this.drawKey(ctx, x, y, keyW(p), p.k, small);
         ctx.globalAlpha = 1;
         if (p.done) fadeText(t0);
+        else if (alpha < 1) for (let k = t0; k < this.texts.length; k++) this.texts[k].alpha = alpha;
         x += keyW(p);
       }
     });
@@ -1864,8 +1884,10 @@ class Renderer {
     // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
     if (!ui.touch) {
       const space = { k: 'space', w: 25 };
-      this.keyHints(ctx, 143, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH']);
-      this.keyHints(ctx, 155, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA']);
+      // Dibuat kecil & pudar supaya tidak bersaing dengan menu (petunjuk lengkap ada di layar ? / CARA MAIN).
+      const HINT_ALPHA = 0.5;
+      this.keyHints(ctx, 145, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH'], null, false, HINT_ALPHA, true);
+      this.keyHints(ctx, 154, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA'], null, false, HINT_ALPHA, true);
     }
     if (ui.soundMode && ui.soundMode !== 'all') {
       this.txt(ui.soundMode === 'off' ? 'SUARA: MATI' : 'MUSIK: MATI', LW / 2, 168, P.dim, 1, 'center');

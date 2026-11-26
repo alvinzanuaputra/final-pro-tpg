@@ -537,9 +537,10 @@ export class Renderer {
       ctx.fillRect(PX + (k - 1) * 6, y, 4, 4);
     }
 
-    if (this.k >= 2) {   // di layar sangat kecil teks bantuan tidak muat
-      this.txt(ui.touch ? 'TAHAN L/R MIRING' : 'TAHAN Q/E MIRING', PX, 144, P.dim);
-      this.txt(ui.touch ? 'MENU = JEDA' : 'P JEDA  M SUARA', PX, 151, P.dim);
+    // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
+    if (this.k >= 2 && !ui.touch) {   // di layar sangat kecil teks bantuan tidak muat
+      this.txt('TAHAN Q/E MIRING', PX, 144, P.dim);
+      this.txt('P JEDA  M SUARA', PX, 151, P.dim);
     }
     this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
   }
@@ -705,13 +706,12 @@ export class Renderer {
     this.drawLogo(ctx, 24);
     this.txt('TETRIS PASIR YANG BISA MIRING', LW / 2, 46, P.dim, 1, 'center');
     const items = (ui.titleItems || ['play', 'board', 'ach', 'settings']).map((id) => [id, this.menuLabel(id, ui)]);
-    this.menu(ctx, ui, items, 64, 84, items.length > 3 ? 14 : 15);
+    // 5 item (dengan KREDIT): mulai sedikit lebih atas & lebih rapat supaya tidak menabrak teks TERBAIK
+    this.menu(ctx, ui, items, items.length > 4 ? 58 : 64, 84, items.length > 4 ? 13 : items.length > 3 ? 14 : 15);
     this.txt(`TERBAIK: ${ui.best}`, LW / 2, 124, P.accent, 1, 'center');
     if (ui.playerName) this.txt(`PEMAIN: ${ui.playerName}`, LW / 2, 132, P.dim, 1, 'center');
-    if (ui.touch) {
-      this.keyHints(ctx, 143, [{ k: 'A' }, 'PUTAR', 5, { k: 'B' }, 'BALIK', 5, { k: 'up' }, 'JATUH']);
-      this.keyHints(ctx, 155, ['TAHAN', { k: 'L' }, '/', { k: 'R' }, 'MIRING']);
-    } else {
+    // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
+    if (!ui.touch) {
       const space = { k: 'space', w: 25 };
       this.keyHints(ctx, 143, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH']);
       this.keyHints(ctx, 155, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA']);
@@ -729,6 +729,7 @@ export class Renderer {
       case 'board': return 'PERINGKAT';
       case 'ach': return 'PRESTASI';
       case 'settings': return 'PENGATURAN';
+      case 'credits': return 'KREDIT';
       case 'resume': return 'LANJUT';
       case 'restart': return 'ULANG';
       case 'menu': return 'MENU UTAMA';
@@ -752,7 +753,7 @@ export class Renderer {
     const items = (ui.menuItems || ['sound', 'back']).map((id) => [id, this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 60, 96, 15);
     if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 130, this.pal.dim, 1, 'center');
-    this.txt(ui.touch ? 'SAAT MAIN: MENU = JEDA & PENGATURAN' : 'M = SUARA   P = JEDA SAAT MAIN', LW / 2, 140, this.pal.dim, 1, 'center');
+    if (!ui.touch) this.txt('M = SUARA   P = JEDA SAAT MAIN', LW / 2, 140, this.pal.dim, 1, 'center');
   }
 
   drawOver(ctx, ui) {

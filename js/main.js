@@ -11,6 +11,7 @@ const canvas = document.getElementById('screen');
 const consoleEl = document.getElementById('console');
 const slotEl = document.getElementById('slot');
 const nameBox = document.getElementById('namebox');
+const creditsBox = document.getElementById('credits');
 const nameForm = document.getElementById('nameform');
 const nameInput = document.getElementById('nameinput');
 const nameErr = document.getElementById('nameerr');
@@ -47,7 +48,7 @@ renderer.setPalette(store.get('palette', 'default'));
 
 // Menu dengan isi dinamis (pause, settings) dihitung di menuItems().
 const MENUS = {
-  title: ['play', 'board', 'ach', 'settings'],
+  title: ['play', 'board', 'ach', 'settings', 'credits'],
   over: ['restart', 'board', 'menu'],
   board: ['back'],
   ach: ['back'],
@@ -93,6 +94,10 @@ const SCROLL_KEYS = { PageUp: -1, PageDown: 1, Home: -Infinity, End: Infinity };
 
 function onUiKey(e) {
   if (nameBox.classList.contains('show')) return;
+  if (creditsOpen()) {
+    if (e.code === 'Escape' || e.code === 'Backspace' || e.code === 'Enter') { e.preventDefault(); closeCredits(); }
+    return;
+  }
   unlockAudio();
   if (ui.screen === 'start') { goTitle(); return; }
   if (e.code === 'KeyM') { toggleMute(); return; }
@@ -128,6 +133,7 @@ function shellPress(btn) {
   const active = !navigator.userActivation || navigator.userActivation.hasBeenActive;
   if (navigator.vibrate && active) { try { navigator.vibrate(8); } catch { /* abaikan */ } }
   if (nameBox.classList.contains('show')) return;
+  if (creditsOpen()) { if (btn === 'b' || btn === 'menu' || btn === 'a') closeCredits(); return; }
   if (ui.screen === 'start') { goTitle(); sfx.click(); return; }
   // MENU: saat main → jeda (berisi pengaturan); di jeda → lanjut; di layar lain → kembali
   if (btn === 'menu') {
@@ -273,6 +279,7 @@ function activate(id) {
     case 'theme': toggleTheme(); break;
     case 'sound': toggleMute(); break;
     case 'settings': setScreen('settings'); break;
+    case 'credits': openCredits(); break;
     case 'back':
       if (ui.screen === 'board' && ui.fromOver) { setScreen('over'); ui.focus = 1; }
       else goTitle();
@@ -313,6 +320,42 @@ function themeUnlocked(t) {
   if (!t.unlock || renderer.paletteName === t.id) return true;
   return ach.unlocked.has(t.unlock) || (t.id === 'retro' && ach.unlocked.has('secret_code'));  // secret_code: versi lama
 }
+// ------------------------------------------------------------- KREDIT
+// Modal HTML (lihat index.html #credits): foto & link sosmed pembuat, mata kuliah, sumber aset.
+function creditsOpen() { return creditsBox.classList.contains('show'); }
+function openCredits() {
+  creditsBox.classList.add('show');
+  creditsBox.querySelector('.panel').scrollTop = 0;
+  input.releaseAll();
+  checkAlvinWebsite();
+  setTimeout(() => document.getElementById('creditsclose').focus({ preventScroll: true }), 50);
+}
+function closeCredits() {
+  creditsBox.classList.remove('show');
+  sfx.back();
+  ui.focus = MENUS.title.indexOf('credits');
+}
+document.getElementById('creditsclose').addEventListener('click', closeCredits);
+creditsBox.addEventListener('click', (e) => { if (e.target === creditsBox) closeCredits(); });
+
+// Website Alvin dicek saat KREDIT dibuka. Kalau tidak bisa dihubungi, tombolnya ditandai offline
+// dan Instagram dipindah ke depan sebagai alternatif.
+let alvinChecked = false;
+function checkAlvinWebsite() {
+  if (alvinChecked) return;
+  alvinChecked = true;
+  const web = document.getElementById('alvin-web');
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  fetch('https://alvinzanua.site', { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal })
+    .catch(() => {
+      web.classList.add('down');
+      web.textContent = 'WEBSITE (OFFLINE)';
+      web.parentElement.appendChild(web); // Instagram jadi pilihan pertama
+    })
+    .finally(() => clearTimeout(timer));
+}
+
 function titleItems() { return MENUS.title; }
 // Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
@@ -521,7 +564,7 @@ window.addEventListener('pageshow', () => queueLayout());
 document.addEventListener('focusout', () => { setTimeout(() => { resetScroll(); layout(); }, 80); setTimeout(layout, 400); });
 // Safari iOS kadang tetap menggulir halaman meski overflow:hidden → tolak gestur geser di luar kotak input.
 document.addEventListener('touchmove', (e) => {
-  if (!(e.target instanceof Element) || !e.target.closest('input')) e.preventDefault();
+  if (!(e.target instanceof Element) || !e.target.closest('input, .credits')) e.preventDefault();
 }, { passive: false });
 if (window.ResizeObserver) new ResizeObserver(queueLayout).observe(document.getElementById('app'));
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });

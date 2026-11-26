@@ -1,6 +1,6 @@
 /* SandTilt — bundel otomatis dari js/*.js (JANGAN diedit langsung).
    Dibuat oleh: node tools/build-bundle.mjs
-   Urutan module: config, util, sim, pieces, game, font, render, input, audio, achievements, leaderboard, main */
+   Urutan module: config, util, sim, pieces, game, font, render, input, audio, achievements, leaderboard, tutorial, main */
 (function () {
 'use strict';
 const __mod = {};
@@ -547,6 +547,9 @@ class Game {
 
   reset(seed) {
     this.seed = seed >>> 0;
+    // Aturan yang bisa dimatikan mode tutorial (lihat tutorial.js). Game normal: semua aktif.
+    // fall: null = kecepatan level, 0 = piece melayang (tidak jatuh sendiri), > 0 = detik per baris.
+    this.rules = { events: true, danger: true, level: true, spawn: true, fall: null };
     this.rng = makeRng(this.seed);
     this.sand = new Sand(this.rng);
     this.bag = new Bag(this.rng);
@@ -607,6 +610,7 @@ class Game {
 
   // Ruang napas (warna baru masuk): kecepatan memakai level sebelumnya selama CFG.BREATHER detik.
   gravityInterval() {
+    if (this.rules.fall) return this.rules.fall;
     return levelConfig(Math.max(1, this.level - (this.breather > 0 ? 1 : 0))).fall;
   }
 
@@ -624,6 +628,14 @@ class Game {
       }
     }
     return false;
+  }
+
+  // Munculkan piece tertentu (tutorial), menggantikan piece yang sedang jatuh.
+  spawnSpec(spec) {
+    this.next = { mat: MAT_SAND, ...spec };
+    this.lastSpecial = MAT_SAND;
+    this.piece = null;
+    this.spawn();
   }
 
   spawn() {
@@ -734,6 +746,7 @@ class Game {
 
   // Event pengganggu: peringatan dulu, lalu aktif beberapa detik.
   updateEvent(dt) {
+    if (!this.rules.events) return;
     if (!this.event) {
       this.eventTimer -= dt;
       if (this.eventTimer > 0) return;
@@ -793,7 +806,7 @@ class Game {
     this.events.emit('land', { x: p.x, y: p.y, color: p.color, mat: p.mat, hard });
     this.piece = null;
     if (outOfTop) { this.gameOver('lockout'); return; }
-    this.spawn();
+    if (this.rules.spawn) this.spawn();
   }
 
   startClear(res) {
@@ -824,7 +837,7 @@ class Game {
     });
 
     const newLevel = 1 + Math.floor(this.clears / CFG.CLEARS_PER_LEVEL);
-    if (newLevel > this.level) {
+    if (newLevel > this.level && this.rules.level) {
       this.level = newLevel;
       const lc = levelConfig(newLevel);
       if (lc.colors > this.numColors) { this.numColors = lc.colors; this.breather = CFG.BREATHER; }
@@ -916,7 +929,8 @@ class Game {
     if (p) {
       const normal = BLOCK / this.gravityInterval();
       const speed = input.soft ? Math.max(normal, CFG.SOFT_DROP_SPEED) : normal;
-      p.fall += speed * dt;
+      // fall 0 (tutorial): piece melayang sampai pemain menurunkannya sendiri
+      if (this.rules.fall !== 0 || input.soft) p.fall += speed * dt;
       while (p.fall >= 1) {
         p.fall -= 1;
         if (!this.collides(p, p.x, p.y + 1, p.rot)) {
@@ -954,7 +968,7 @@ class Game {
     }
 
     // Garis bahaya
-    if (this.sand.anyAbove(CFG.DANGER_Y)) {
+    if (this.rules.danger && this.sand.anyAbove(CFG.DANGER_Y)) {
       this.danger += dt;
       if (this.danger >= CFG.DANGER_GRACE) this.gameOver('danger');
     } else this.danger = 0;
@@ -1372,11 +1386,12 @@ class Renderer {
     ctx.translate(sx, sy);
     this.ox = sx; this.oy = sy;
 
-    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'start' || (ui.screen === 'board' && !ui.fromOver)) {
+    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'start' || ui.screen === 'help' || (ui.screen === 'board' && !ui.fromOver)) {
       this.drawRain(ctx, dt);
     } else {
       this.drawBoard(ctx, g);
-      this.drawPanel(ctx, g, ui);
+      if (ui.tutView) { this.drawTutorialMarks(ctx, ui.tutView); this.drawTutorialPanel(ctx, ui.tutView, ui); }
+      else this.drawPanel(ctx, g, ui);
       this.drawEventBanner(ctx, g, ui);
     }
 
@@ -1400,6 +1415,8 @@ class Renderer {
       case 'ach': this.drawAchievements(ctx, ui); break;
       case 'settings': this.drawSettings(ctx, ui); break;
       case 'start': this.drawStart(ctx); break;
+      case 'help': this.drawHelp(ctx, ui); break;
+      case 'tutDone': this.drawTutDone(ctx, ui); break;
     }
     this.drawToast(ctx, dt);
     this.composite();
@@ -1713,12 +1730,13 @@ class Renderer {
     }
   }
 
-  // parts: 'TEKS' | { k: 'Q' | 'left' | 'right' | 'up' | 'down', w? } | angka (jarak tambahan). Baris dipusatkan.
-  keyHints(ctx, y, parts) {
+  // parts: 'TEKS' | { k: 'Q' | 'left' | 'right' | 'up' | 'down', w? } | angka (jarak tambahan).
+  // Baris dipusatkan di layar, atau rata kiri mulai x0 kalau diberikan.
+  keyHints(ctx, y, parts, x0 = null) {
     const keyW = (p) => p.w || (KEY_ARROWS[p.k] ? 9 : Math.max(9, Math.ceil(this.tw(p.k)) + 5));
     const width = (p) => (typeof p === 'number' ? p : typeof p === 'string' ? this.tw(p) : keyW(p));
     const total = parts.reduce((s, p, i) => s + width(p) + (i && typeof p !== 'number' ? 2 : 0), 0);
-    let x = Math.round((LW - total) / 2);
+    let x = x0 ?? Math.round((LW - total) / 2);
     parts.forEach((p, i) => {
       if (i && typeof p !== 'number') x += 2;
       if (typeof p === 'number') x += p;
@@ -1766,6 +1784,7 @@ class Renderer {
     const P = this.pal;
     this.drawLogo(ctx, 24);
     this.txt('TETRIS PASIR YANG BISA MIRING', LW / 2, 46, P.dim, 1, 'center');
+    this.helpIcon(ctx, ui);
     const items = (ui.titleItems || ['play', 'board', 'ach', 'settings']).map((id) => [id, this.menuLabel(id, ui)]);
     // 5 item (dengan KREDIT): mulai sedikit lebih atas & lebih rapat supaya tidak menabrak teks TERBAIK
     this.menu(ctx, ui, items, items.length > 4 ? 58 : 64, 84, items.length > 4 ? 13 : items.length > 3 ? 14 : 15);
@@ -1791,6 +1810,8 @@ class Renderer {
       case 'ach': return 'PRESTASI';
       case 'settings': return 'PENGATURAN';
       case 'credits': return 'KREDIT';
+      case 'tutorial': return 'MAIN TUTORIAL';
+      case 'skipTut': return 'LEWATI TUTORIAL';
       case 'resume': return 'LANJUT';
       case 'restart': return 'ULANG';
       case 'menu': return 'MENU UTAMA';
@@ -1799,6 +1820,140 @@ class Renderer {
       case 'theme': return `TEMA: ${ui.themeName || 'KLASIK'}`;
       default: return id.toUpperCase();
     }
+  }
+
+  // Tombol bantuan "?" di pojok kanan atas layar judul (keyboard: H).
+  helpIcon(ctx, ui) {
+    const P = this.pal, x = LW - 15, y = 4, s = 11;
+    this.buttons.push({ id: 'help', x: x - 3, y: y - 3, w: s + 6, h: s + 6 });   // area sentuh sedikit lebih besar
+    ctx.fillStyle = P.frame;
+    ctx.fillRect(x + 1, y, s - 2, s);
+    ctx.fillRect(x, y + 1, s, s - 2);
+    ctx.fillStyle = P.shadow;
+    ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
+    this.txt('?', x + s / 2, y + (s - this.th()) / 2, P.accent, 1, 'center');
+    if (!ui.touch) this.txt('H', x - 3, y + (s - this.th()) / 2, P.dim, 1, 'right');
+  }
+
+  // CARA MAIN: ringkasan satu layar + tombol ke tutorial interaktif.
+  drawHelp(ctx, ui) {
+    const P = this.pal;
+    this.dim(ctx, 0.75);
+    this.txt('CARA MAIN', LW / 2, 4, P.text, 2, 'center');
+    const tilt = ui.touch ? 'TAHAN L / R' : 'TAHAN Q / E';
+    const rows = [
+      ['1', 'BALOK YANG MENDARAT HANCUR JADI PASIR.'],
+      ['2', 'SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN: JEMBATAN HILANG, DAPAT SKOR.'],
+      ['3', `${tilt} UNTUK MEMIRINGKAN PAPAN. PASIR IKUT MENGALIR.`],
+      ['4', 'PASIR LEWAT GARIS MERAH ATAS = KALAH.'],
+    ];
+    const X = 12, TX = 20, MW = LW - TX - 8;
+    let y = 22;
+    for (const [n, text] of rows) {
+      this.txt(n, X, y, P.accent);
+      for (const line of this.wrap(text, MW)) { this.txt(line, TX, y, P.text); y += 7; }
+      y += 3;
+      if (n === '2') { this.drawBridgeDemo(ctx, Math.round(LW / 2 - 28), y); y += 23; }
+    }
+    this.txt('RUNTUHAN JADI JEMBATAN BARU = CHAIN!', LW / 2, y + 1, P.dim, 1, 'center');
+    const items = ui.menuItems || ['tutorial', 'back'];
+    const bw = [78, 52], gap = 4, total = bw[0] + bw[1] + gap;
+    let bx = Math.floor((LW - total) / 2);
+    items.forEach((id, k) => {
+      this.button(ctx, id, this.menuLabel(id, ui), bx, Math.min(158, Math.round(y) + 16), bw[k], 11, ui.focus === k);
+      bx += bw[k] + gap;
+    });
+  }
+
+  // Ilustrasi kecil jembatan: papan mini, pita merah dari dinding kiri ke kanan berkedip lalu hilang.
+  drawBridgeDemo(ctx, x, y) {
+    const P = this.pal, w = 56, h = 18;
+    ctx.fillStyle = P.frame; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = P.boardA; ctx.fillRect(x, y, w, h);
+    for (let bx = 0; bx < w; bx += 4) {           // alas bergaris
+      ctx.fillStyle = this.sandCss[(bx / 4) % 2 ? 3 : 2][1];
+      ctx.fillRect(x + bx, y + h - 6, 4, 6);
+    }
+    const t = this.time % 2.4;                     // 0-1.6 terlihat, lalu kedip, lalu kosong
+    if (t < 2.0) {
+      const blink = t > 1.6 && Math.floor(this.time * 16) % 2 === 0;
+      for (let bx = 0; bx < w; bx++) {
+        const top = y + h - 10 - Math.round(1.5 + Math.sin(bx * 0.35) * 1.5);
+        ctx.fillStyle = blink ? '#ffffff' : this.sandCss[1][(bx >> 1) % 4];
+        ctx.fillRect(x + bx, top, 1, y + h - 6 - top);
+      }
+    }
+    // dinding kiri & kanan ditandai
+    ctx.fillStyle = P.accent;
+    ctx.fillRect(x - 3, y + 2, 2, h - 4);
+    ctx.fillRect(x + w + 1, y + 2, 2, h - 4);
+  }
+
+  // Penanda di papan saat tutorial: dinding kiri & kanan menyala, panah ke target.
+  drawTutorialMarks(ctx, v) {
+    const m = v.mark;
+    if (!m) return;
+    const P = this.pal, on = Math.floor(this.time * 4) % 2 === 0;
+    if (m.walls) {
+      ctx.fillStyle = on ? P.accent : P.frame;
+      ctx.fillRect(BX - 2, BY + CFG.DANGER_Y, 2, H - CFG.DANGER_Y + 2);
+      ctx.fillRect(BX + W, BY + CFG.DANGER_Y, 2, H - CFG.DANGER_Y + 2);
+    }
+    const bob = Math.round(Math.sin(this.time * 6) * 1.5);
+    ctx.fillStyle = P.accent;
+    if (m.arrowX != null) {
+      // panah ke bawah di atas lubang
+      const x = BX + m.arrowX, y = BY + m.arrowY + bob;
+      ctx.fillRect(x - 1, y - 6, 2, 4);
+      for (let r = 0; r < 4; r++) ctx.fillRect(x - 4 + r, y - 2 + r, 8 - 2 * r, 1);
+    }
+    if (m.push) {
+      // tiga panah ke kanan menuju dinding kanan
+      const shift = Math.floor(this.time * 8) % 4;
+      for (let k = 0; k < 3; k++) {
+        const x = BX + W - 24 + k * 6 + shift, y = BY + m.arrowY;
+        for (let r = 0; r < 4; r++) ctx.fillRect(x + r, y - 3 + r, 1, 7 - 2 * r);
+      }
+    }
+  }
+
+  // Panel samping saat tutorial (menggantikan skor/level).
+  drawTutorialPanel(ctx, v, ui) {
+    const P = this.pal, MW = LW - PX - 4;
+    this.txt('TUTORIAL', PX, 10, P.dim);
+    for (let k = 0; k < v.total; k++) {           // titik kemajuan
+      ctx.fillStyle = k < v.n - 1 || (k === v.n - 1 && v.good) ? P.accent : k === v.n - 1 ? P.text : P.frame;
+      ctx.fillRect(PX + k * 6, 19, 4, 4);
+    }
+    let y = 28;
+    this.txt(v.title, PX, y, v.good ? P.accent : P.text, 1.5);
+    y += this.th(1.5) + 4;
+    const lines = this.wrap(v.body, MW);
+    lines.forEach((line, i) => {
+      this.txt(line, PX, y, v.retry && i === 0 ? P.danger : P.text);
+      y += 7;
+    });
+    y += 4;
+    for (const row of v.keys) { this.keyHints(ctx, y, row, PX); y += 12; }
+    this.txt(ui.touch ? 'MENU: LEWATI' : 'ESC: LEWATI', PX, 158, P.dim);
+    this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
+  }
+
+  drawTutDone(ctx, ui) {
+    const P = this.pal;
+    this.dim(ctx, 0.86);
+    this.txt('SIAP MAIN!', LW / 2, 24, P.accent, 2, 'center');
+    let y = 48;
+    const lines = [
+      'JANGAN BIARKAN PASIR LEWAT GARIS MERAH ATAS.',
+      'MATERIAL DAN GANGGUAN BARU DIJELASKAN SAAT MUNCUL.',
+    ];
+    for (const text of lines) {
+      for (const line of this.wrap(text, LW - 24)) { this.txt(line, LW / 2, y, P.text, 1, 'center'); y += 8; }
+      y += 5;
+    }
+    const items = (ui.menuItems || ['play', 'menu']).map((id) => [id, id === 'play' ? 'MAIN SEKARANG' : this.menuLabel(id, ui)]);
+    this.menu(ctx, ui, items, 110, 96, 15);
   }
 
   drawPause(ctx, ui) {
@@ -2618,6 +2773,204 @@ class Leaderboard {
 return { CENTRAL_API, validName, formatDuration, Leaderboard };
 })();
 
+// ===================================================================== js/tutorial.js
+__mod["tutorial"] = (function () {
+const { W, H, BLOCK } = __mod["config"];
+
+// Tutorial interaktif untuk pemain baru (±1 menit). Pemain belajar dengan mencoba langsung:
+// setiap langkah menampilkan petunjuk singkat dan baru lanjut setelah aksinya dilakukan.
+//   1 GERAK     geser + putar piece yang melayang
+//   2 JATUH     jatuhkan piece → hancur jadi pasir
+//   3 JEMBATAN  papan disiapkan: jembatan merah berlubang, isi lubangnya dengan piece merah
+//   4 MIRING    papan disiapkan: pasir merah belum sampai dinding kanan, tahan miring ke kanan
+// Selama tutorial: tanpa event, garis bahaya, naik level, prestasi, dan skor tidak dikirim.
+
+const RED = 1, YELLOW = 2, GREEN = 3;
+const BASE_Y = H - 3 * BLOCK;   // 3 baris blok paling bawah: alas bergaris (kuning/hijau)
+const LAYER_Y = BASE_Y - BLOCK; // satu baris blok di atas alas: lapisan pelajaran
+// Lubang jembatan (langkah 3) dalam butir: dua blok di tengah-kanan.
+const GAP_X0 = 48, GAP_X1 = 64;
+const FAIL_WAIT = 2.2;          // detik tanpa clear setelah percobaan → papan disiapkan ulang
+
+const STEPS = ['move', 'drop', 'bridge', 'tilt'];
+
+class Tutorial {
+  constructor(game, events, onFinish) {
+    this.game = game;
+    this.onFinish = onFinish;
+    this.active = false;
+    const on = (name, fn) => events.on(name, (d) => { if (this.active) fn(d); });
+    on('move', () => { this.moved = true; this.check(); });
+    on('rotate', () => { this.rotated = true; this.check(); });
+    on('land', () => this.onLand());
+    on('clear', () => { if (this.key === 'bridge' || this.key === 'tilt') this.succeed(); });
+    on('tiltStart', () => { this.tilted = true; });
+  }
+
+  get key() { return STEPS[this.step]; }
+
+  start() {
+    this.active = true;
+    this.retries = 0;
+    this.go(0);
+  }
+
+  stop() { this.active = false; }
+
+  go(step) {
+    this.step = step;
+    this.done = false;     // langkah selesai, sedang menampilkan "BAGUS!"
+    this.wait = 0;
+    this.fail = 0;         // > 0: hitung mundur sebelum papan disiapkan ulang
+    this.retry = false;    // tampilkan "COBA LAGI"
+    this.moved = this.rotated = this.tilted = false;
+    this.setup();
+  }
+
+  setup() {
+    const g = this.game, r = g.rules;
+    r.events = false; r.danger = false; r.level = false;
+    g.event = null;
+    g.tilt.meter = 1;
+    switch (this.key) {
+      case 'move':
+        this.fill(() => 0);
+        r.spawn = true; r.fall = 0;
+        g.spawnSpec({ type: 'T', color: YELLOW });
+        break;
+      case 'drop':
+        r.spawn = true; r.fall = 0.5;
+        break;
+      case 'bridge':
+        this.fill((x, y) => (y >= BASE_Y ? stripe(x) : y >= LAYER_Y ? (x >= GAP_X0 && x < GAP_X1 ? GREEN : RED) : 0));
+        r.spawn = false; r.fall = 0.55;
+        g.spawnSpec({ type: 'I', color: RED });
+        break;
+      case 'tilt':
+        // lapisan merah berhenti 2 blok sebelum dinding kanan; setelah longsor masih ada celah di kanan
+        this.fill((x, y) => (y >= BASE_Y ? stripe(x) : y >= LAYER_Y && x < W - 2 * BLOCK ? RED : 0));
+        r.spawn = false;
+        g.piece = null;
+        break;
+    }
+  }
+
+  // Isi ulang papan: fn(x, y) → warna (0 = kosong). Semua butir pasir biasa.
+  fill(fn) {
+    const s = this.game.sand, rng = this.game.rng;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        s.cells[i] = fn(x, y);
+        s.mat[i] = 0;
+        s.shade[i] = (rng() * 4) | 0;
+      }
+    }
+    this.game.clearing = null;
+    this.game.chain = 0;
+    this.game.dirty = true;
+  }
+
+  check() {
+    if (this.key === 'move' && this.moved && this.rotated) this.succeed();
+  }
+
+  onLand() {
+    if (this.key === 'drop') this.succeed();
+    // piece merah sudah mendarat: tunggu sebentar, kalau tidak terjadi clear berarti gagal
+    else if (this.key === 'bridge') this.fail = FAIL_WAIT;
+  }
+
+  succeed() {
+    if (this.done) return;
+    this.done = true;
+    this.fail = 0;
+    this.retry = false;
+    this.wait = this.key === 'bridge' || this.key === 'tilt' ? 1.6 : 1.0;   // beri waktu melihat clear
+    if (this.key === 'move') this.game.rules.fall = 0.5;   // piece yang sama langsung jatuh di langkah berikutnya
+  }
+
+  // Dipanggil sekali per tick simulasi.
+  update(dt) {
+    if (!this.active) return;
+    const g = this.game;
+    if (this.done) {
+      if (g.clearing) return;                 // tunggu kedipan clear selesai
+      this.wait -= dt;
+      if (this.wait > 0) return;
+      if (this.step + 1 < STEPS.length) this.go(this.step + 1);
+      else { this.active = false; this.onFinish(); }
+      return;
+    }
+    // Langkah miring gagal: sudah dicoba, meter dilepas cukup lama, tetapi belum ada clear.
+    if (this.key === 'tilt' && this.tilted && !g.tilt.active && !g.clearing) {
+      this.fail = this.fail > 0 ? this.fail : FAIL_WAIT;
+    }
+    if (this.fail > 0 && !g.clearing) {
+      if (this.key === 'tilt' && g.tilt.active) { this.fail = 0; return; }
+      this.fail -= dt;
+      if (this.fail <= 0) {
+        this.retries++;
+        const step = this.step;
+        this.go(step);
+        this.retry = true;
+      }
+    }
+  }
+
+  // Data untuk renderer (panel samping + penanda di papan).
+  view(touch) {
+    const k = this.key;
+    const T = TEXT[k];
+    const v = {
+      n: this.step + 1, total: STEPS.length, key: k,
+      title: this.done ? 'BAGUS!' : T.title,
+      body: this.done ? T.good : this.retry ? `COBA LAGI! ${T.body}` : T.body,
+      keys: this.done ? [] : (touch ? T.touch : T.keys) || [],
+      good: this.done, retry: this.retry && !this.done,
+    };
+    if (!this.done && k === 'bridge') v.mark = { walls: true, arrowX: (GAP_X0 + GAP_X1) / 2, arrowY: LAYER_Y - 2 * BLOCK };
+    if (!this.done && k === 'tilt') v.mark = { walls: true, push: 1, arrowY: LAYER_Y - 5 };
+    return v;
+  }
+}
+
+// alas bergaris: kuning & hijau bergantian per blok, jadi tidak pernah membentuk jembatan
+function stripe(x) { return ((x / BLOCK) | 0) % 2 ? GREEN : YELLOW; }
+
+// Teks per langkah. keys: baris petunjuk tombol (lihat Renderer.keyHints): 'TEKS' | { k } | angka jarak.
+const TEXT = {
+  move: {
+    title: 'GERAK',
+    body: 'GESER DAN PUTAR BALOK.',
+    keys: [[{ k: 'left' }, { k: 'right' }, 'GESER'], [{ k: 'up' }, 'PUTAR']],
+    touch: [[{ k: 'left' }, { k: 'right' }, 'GESER'], [{ k: 'A' }, 'PUTAR']],
+    good: 'MUDAH, KAN?',
+  },
+  drop: {
+    title: 'JATUHKAN',
+    body: 'BALOK YANG MENDARAT HANCUR JADI PASIR.',
+    keys: [[{ k: 'space', w: 25 }, 'JATUH'], [{ k: 'down' }, 'PELAN']],
+    touch: [[{ k: 'up' }, 'JATUH'], [{ k: 'down' }, 'PELAN']],
+    good: 'JADI PASIR!',
+  },
+  bridge: {
+    title: 'JEMBATAN',
+    body: 'SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN. ISI CELAH DI BAWAH PANAH!',
+    good: 'JEMBATAN HILANG = SKOR!',
+  },
+  tilt: {
+    title: 'MIRING',
+    body: 'PASIR BELUM SAMPAI DINDING KANAN. TAHAN MIRING KE KANAN!',
+    keys: [['TAHAN', { k: 'E' }]],
+    touch: [['TAHAN', { k: 'R' }]],
+    good: 'MIRING ADA BATASNYA, PAKAI SEPERLUNYA.',
+  },
+};
+
+return { Tutorial };
+})();
+
 // ===================================================================== js/main.js
 __mod["main"] = (function () {
 const { Emitter, store } = __mod["util"];
@@ -2627,6 +2980,7 @@ const { Input } = __mod["input"];
 const { sfx, unlockAudio, setSoundMode, getSoundMode, cycleSoundMode, setMusic, setDanger, setPausedMusic, audioDebug } = __mod["audio"];
 const { Achievements } = __mod["achievements"];
 const { Leaderboard, validName } = __mod["leaderboard"];
+const { Tutorial } = __mod["tutorial"];
 const { CFG, colorsForLevel, levelConfig } = __mod["config"];
 
 const STEP = 1 / 60;
@@ -2666,7 +3020,7 @@ ui.soundMode = getSoundMode();
 ui.muted = ui.soundMode === 'off';
 const SOUND_LABEL = { all: 'MUSIK + EFEK', sfx: 'EFEK SAJA', off: 'MATI' };
 // musik yang diputar per layar
-const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', settings: 'title', play: 'game', pause: 'game', over: null };
+const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', settings: 'title', help: 'title', play: 'game', pause: 'game', tutDone: 'game', over: null };
 renderer.setPalette(store.get('palette', 'default'));
 
 // Menu dengan isi dinamis (pause, settings) dihitung di menuItems().
@@ -2675,6 +3029,8 @@ const MENUS = {
   over: ['restart', 'board', 'menu'],
   board: ['back'],
   ach: ['back'],
+  help: ['tutorial', 'back'],
+  tutDone: ['play', 'menu'],
 };
 
 // ---------------------------------------------------------------- input
@@ -2695,12 +3051,13 @@ function uiNav(cmd) {
   }
   const items = menuItems(ui.screen);
   if (!items) return;
+  if (ui.screen === 'help' && (cmd === 'left' || cmd === 'right')) cmd = cmd === 'left' ? 'up' : 'down';   // tombol berdampingan
   if (cmd === 'down') { ui.focus = (ui.focus + 1) % items.length; sfx.cursor(); }
   else if (cmd === 'up') { ui.focus = (ui.focus + items.length - 1) % items.length; sfx.cursor(); }
   else if (cmd === 'ok') { sfx.click(); activate(items[ui.focus]); }
   else if (cmd === 'back') {
-    if (ui.screen === 'board' || ui.screen === 'ach' || ui.screen === 'settings') { sfx.back(); activate('back'); }
-    else if (ui.screen === 'over') { sfx.back(); activate('menu'); }
+    if (ui.screen === 'board' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'help') { sfx.back(); activate('back'); }
+    else if (ui.screen === 'over' || ui.screen === 'tutDone') { sfx.back(); activate('menu'); }
   }
 }
 
@@ -2725,6 +3082,7 @@ function onUiKey(e) {
   if (ui.screen === 'start') { goTitle(); return; }
   if (e.code === 'KeyM') { toggleMute(); return; }
   if (e.code === 'KeyF') { toggleFullscreen(); return; }
+  if (e.code === 'KeyH' && ui.screen === 'title') { sfx.click(); activate('help'); return; }
 
   if (ui.screen === 'play') {
     if (e.code === 'KeyP' || e.code === 'Escape') pause();
@@ -2870,6 +3228,7 @@ ach.disabled = TEST.on;
 
 function startGame() {
   unlockAudio();
+  endTutorial();
   const seed = params.has('seed') ? Number(params.get('seed')) : (Date.now() ^ (Math.random() * 1e9)) >>> 0;
   game.reset(seed);
   if (TEST.level > 1) {
@@ -2887,6 +3246,38 @@ function startGame() {
   lb.startRun();   // server mencatat waktu mulai; skor hanya diterima untuk run ini
   setScreen('play');
   enableInputNextFrame();
+}
+
+// ------------------------------------------------------------- TUTORIAL
+// Pemain baru (belum pernah menyelesaikan/melewati tutorial) otomatis masuk tutorial saat menekan MAIN.
+// Bisa diulang dari ikon ? di layar judul → CARA MAIN → MAIN TUTORIAL.
+const tutorial = new Tutorial(game, events, () => {
+  store.set('tutorialDone', true);
+  input.enabled = false;
+  input.releaseAll();
+  sfx.levelUp();
+  setScreen('tutDone');
+});
+ui.tutorial = tutorial;
+
+function startTutorial() {
+  unlockAudio();
+  game.reset((Date.now() ^ (Math.random() * 1e9)) >>> 0);
+  ach.disabled = true;           // tutorial tidak membuka prestasi
+  tutorial.start();
+  ui.over = null;
+  setScreen('play');
+  enableInputNextFrame();
+}
+
+function endTutorial() {
+  tutorial.stop();
+  ach.disabled = TEST.on;
+}
+
+function skipTutorial() {
+  store.set('tutorialDone', true);
+  startGame();
 }
 
 function enableInputNextFrame() {
@@ -2911,9 +3302,19 @@ function resume() {
 function activate(id) {
   switch (id) {
     case 'play':
+      if (!store.get('tutorialDone', false) && !TEST.on && ui.screen === 'title') startTutorial();
+      else startGame();
+      break;
     case 'restart': startGame(); break;
+    case 'help': setScreen('help'); break;
+    case 'tutorial': startTutorial(); break;
+    case 'skipTut': skipTutorial(); break;
     case 'resume': resume(); break;
-    case 'menu': goTitle(); break;
+    case 'menu':
+      if (tutorial.active) store.set('tutorialDone', true);   // keluar dari tutorial = tidak dipaksa lagi
+      endTutorial();
+      goTitle();
+      break;
     case 'board':
       ui.fromOver = ui.screen === 'over';
       setScreen('board');
@@ -3003,7 +3404,7 @@ function checkAlvinWebsite() {
 function titleItems() { return MENUS.title; }
 // Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
-  if (screen === 'pause') return ['resume', 'restart', 'sound', 'theme', 'menu'];
+  if (screen === 'pause') return tutorial.active ? ['resume', 'skipTut', 'menu'] : ['resume', 'restart', 'sound', 'theme', 'menu'];
   if (screen === 'settings') return ['sound', 'theme', 'back'];
   return MENUS[screen];
 }
@@ -3068,6 +3469,7 @@ let overTimer = 0;
 function onGameOver(stats) {
   input.enabled = false;
   input.releaseAll();
+  if (tutorial.active) { startTutorial(); return; }   // seharusnya tidak terjadi (garis bahaya mati); mulai ulang saja
   sfx.gameOver();
   if (TEST.on) {
     // mode uji: hasil hanya ditampilkan, tidak masuk rekor, skor lokal, atau peringkat
@@ -3237,6 +3639,7 @@ let last = performance.now(), acc = 0, heart = 0, dangerOn = false;
 
 function tick() {
   game.update(STEP, input.poll(STEP));
+  tutorial.update(STEP);
 }
 
 function step(dt) {
@@ -3268,6 +3671,7 @@ function frame(now) {
   step(dt);
   ui.titleItems = titleItems();
   ui.menuItems = menuItems(ui.screen);
+  ui.tutView = tutorial.active || ui.screen === 'tutDone' ? tutorial.view(ui.touch) : null;
   ui.theme = renderer.paletteName;
   ui.themeName = (THEMES.find((t) => t.id === ui.theme) || THEMES[0]).name;
   // di Pengaturan: beri tahu kalau masih ada tema yang bisa dibuka lewat prestasi
@@ -3301,6 +3705,7 @@ window.render_game_to_text = () => {
   }
   return JSON.stringify({
     note: 'grid 80x160 butir, origin kiri-atas, y ke bawah; heights = tinggi pasir per kolom blok',
+    tutorial: tutorial.active ? { step: tutorial.key, done: tutorial.done, retry: tutorial.retry } : null,
     screen: ui.screen, state: g.state, score: g.score, level: g.level, chain: g.chain,
     clears: g.clears, colors: g.numColors, grains: g.sand.count(), danger: +g.danger.toFixed(2),
     tilt: { meter: +g.tilt.meter.toFixed(2), active: g.tilt.active, dir: g.tilt.dir, effective: g.effectiveTilt() },

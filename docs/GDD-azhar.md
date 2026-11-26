@@ -91,6 +91,23 @@ Setiap piece punya **warna** (3–5 warna aktif) **dan material**. Material khus
 ### 3.8 Menang
 - Tidak ada kondisi menang (Endless). Tujuannya adalah high score, chain terbaik, dan membuka achievement.
 
+### 3.9 Tutorial (pemain baru)
+- **Otomatis** saat pertama kali menekan MAIN di perangkat itu (`tutorialDone` di `localStorage`). Durasi ±1 menit.
+- Tidak menambah tombol menu: di layar judul hanya ada **ikon ? di pojok kanan atas** (keyboard: **H**) yang membuka layar **CARA MAIN**: ringkasan 4 poin + ilustrasi jembatan + tombol **MAIN TUTORIAL**.
+- 4 langkah interaktif. Langkah berikutnya baru muncul setelah aksi dilakukan. Petunjuk ada di panel samping (menggantikan skor), dengan tombol keyboard **atau** tombol sentuh sesuai perangkat:
+
+| # | Langkah | Papan | Selesai saat |
+|---|---|---|---|
+| 1 | GERAK | kosong, piece melayang (tidak jatuh sendiri) | sudah menggeser **dan** memutar |
+| 2 | JATUHKAN | piece yang sama mulai jatuh pelan | piece mendarat → "JADI PASIR!" |
+| 3 | JEMBATAN | disiapkan: lapisan merah dengan celah 2 blok + panah ke celah, dinding kiri/kanan menyala | clear pertama (piece merah I) |
+| 4 | MIRING | disiapkan: pasir merah berhenti 2 blok sebelum dinding kanan + panah ke kanan | clear lewat tilt |
+
+- Gagal (tidak terjadi clear ±2 detik setelah mencoba) → papan disiapkan ulang + teks **COBA LAGI**.
+- Selama tutorial: tanpa event, garis bahaya, naik level, prestasi, dan skor tidak dikirim ke peringkat.
+- Bisa dilewati: Esc/P/MENU → **LEWATI TUTORIAL** (langsung main). Keluar ke menu utama juga dianggap selesai.
+- Akhir: layar **SIAP MAIN!** (ingatkan garis merah; material & event baru dijelaskan toast saat pertama muncul) → MAIN SEKARANG / MENU UTAMA.
+
 ---
 
 ## 4. Skor & Progresi
@@ -292,6 +309,8 @@ CREATE TABLE IF NOT EXISTS `<NRP>_sandtilt_leaderboard` (
 5. **Achievement:** grid ikon (terbuka/terkunci/???)
 6. **Leaderboard:** tab Minggu Ini / Sepanjang Masa, hitung mundur reset
 7. **Input Nickname:** muncul sekali saat skor pertama akan dikirim
+8. **Cara Main:** dibuka dari ikon ? di layar judul, berisi ringkasan + tombol MAIN TUTORIAL
+9. **Tutorial selesai:** SIAP MAIN! → MAIN SEKARANG / MENU UTAMA
 
 ---
 

@@ -313,11 +313,12 @@ export class Renderer {
     ctx.translate(sx, sy);
     this.ox = sx; this.oy = sy;
 
-    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'start' || (ui.screen === 'board' && !ui.fromOver)) {
+    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'start' || ui.screen === 'help' || (ui.screen === 'board' && !ui.fromOver)) {
       this.drawRain(ctx, dt);
     } else {
       this.drawBoard(ctx, g);
-      this.drawPanel(ctx, g, ui);
+      if (ui.tutView) { this.drawTutorialMarks(ctx, ui.tutView); this.drawTutorialPanel(ctx, ui.tutView, ui); }
+      else this.drawPanel(ctx, g, ui);
       this.drawEventBanner(ctx, g, ui);
     }
 
@@ -341,6 +342,8 @@ export class Renderer {
       case 'ach': this.drawAchievements(ctx, ui); break;
       case 'settings': this.drawSettings(ctx, ui); break;
       case 'start': this.drawStart(ctx); break;
+      case 'help': this.drawHelp(ctx, ui); break;
+      case 'tutDone': this.drawTutDone(ctx, ui); break;
     }
     this.drawToast(ctx, dt);
     this.composite();
@@ -654,12 +657,13 @@ export class Renderer {
     }
   }
 
-  // parts: 'TEKS' | { k: 'Q' | 'left' | 'right' | 'up' | 'down', w? } | angka (jarak tambahan). Baris dipusatkan.
-  keyHints(ctx, y, parts) {
+  // parts: 'TEKS' | { k: 'Q' | 'left' | 'right' | 'up' | 'down', w? } | angka (jarak tambahan).
+  // Baris dipusatkan di layar, atau rata kiri mulai x0 kalau diberikan.
+  keyHints(ctx, y, parts, x0 = null) {
     const keyW = (p) => p.w || (KEY_ARROWS[p.k] ? 9 : Math.max(9, Math.ceil(this.tw(p.k)) + 5));
     const width = (p) => (typeof p === 'number' ? p : typeof p === 'string' ? this.tw(p) : keyW(p));
     const total = parts.reduce((s, p, i) => s + width(p) + (i && typeof p !== 'number' ? 2 : 0), 0);
-    let x = Math.round((LW - total) / 2);
+    let x = x0 ?? Math.round((LW - total) / 2);
     parts.forEach((p, i) => {
       if (i && typeof p !== 'number') x += 2;
       if (typeof p === 'number') x += p;
@@ -707,6 +711,7 @@ export class Renderer {
     const P = this.pal;
     this.drawLogo(ctx, 24);
     this.txt('TETRIS PASIR YANG BISA MIRING', LW / 2, 46, P.dim, 1, 'center');
+    this.helpIcon(ctx, ui);
     const items = (ui.titleItems || ['play', 'board', 'ach', 'settings']).map((id) => [id, this.menuLabel(id, ui)]);
     // 5 item (dengan KREDIT): mulai sedikit lebih atas & lebih rapat supaya tidak menabrak teks TERBAIK
     this.menu(ctx, ui, items, items.length > 4 ? 58 : 64, 84, items.length > 4 ? 13 : items.length > 3 ? 14 : 15);
@@ -732,6 +737,8 @@ export class Renderer {
       case 'ach': return 'PRESTASI';
       case 'settings': return 'PENGATURAN';
       case 'credits': return 'KREDIT';
+      case 'tutorial': return 'MAIN TUTORIAL';
+      case 'skipTut': return 'LEWATI TUTORIAL';
       case 'resume': return 'LANJUT';
       case 'restart': return 'ULANG';
       case 'menu': return 'MENU UTAMA';
@@ -740,6 +747,140 @@ export class Renderer {
       case 'theme': return `TEMA: ${ui.themeName || 'KLASIK'}`;
       default: return id.toUpperCase();
     }
+  }
+
+  // Tombol bantuan "?" di pojok kanan atas layar judul (keyboard: H).
+  helpIcon(ctx, ui) {
+    const P = this.pal, x = LW - 15, y = 4, s = 11;
+    this.buttons.push({ id: 'help', x: x - 3, y: y - 3, w: s + 6, h: s + 6 });   // area sentuh sedikit lebih besar
+    ctx.fillStyle = P.frame;
+    ctx.fillRect(x + 1, y, s - 2, s);
+    ctx.fillRect(x, y + 1, s, s - 2);
+    ctx.fillStyle = P.shadow;
+    ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
+    this.txt('?', x + s / 2, y + (s - this.th()) / 2, P.accent, 1, 'center');
+    if (!ui.touch) this.txt('H', x - 3, y + (s - this.th()) / 2, P.dim, 1, 'right');
+  }
+
+  // CARA MAIN: ringkasan satu layar + tombol ke tutorial interaktif.
+  drawHelp(ctx, ui) {
+    const P = this.pal;
+    this.dim(ctx, 0.75);
+    this.txt('CARA MAIN', LW / 2, 4, P.text, 2, 'center');
+    const tilt = ui.touch ? 'TAHAN L / R' : 'TAHAN Q / E';
+    const rows = [
+      ['1', 'BALOK YANG MENDARAT HANCUR JADI PASIR.'],
+      ['2', 'SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN: JEMBATAN HILANG, DAPAT SKOR.'],
+      ['3', `${tilt} UNTUK MEMIRINGKAN PAPAN. PASIR IKUT MENGALIR.`],
+      ['4', 'PASIR LEWAT GARIS MERAH ATAS = KALAH.'],
+    ];
+    const X = 12, TX = 20, MW = LW - TX - 8;
+    let y = 22;
+    for (const [n, text] of rows) {
+      this.txt(n, X, y, P.accent);
+      for (const line of this.wrap(text, MW)) { this.txt(line, TX, y, P.text); y += 7; }
+      y += 3;
+      if (n === '2') { this.drawBridgeDemo(ctx, Math.round(LW / 2 - 28), y); y += 23; }
+    }
+    this.txt('RUNTUHAN JADI JEMBATAN BARU = CHAIN!', LW / 2, y + 1, P.dim, 1, 'center');
+    const items = ui.menuItems || ['tutorial', 'back'];
+    const bw = [78, 52], gap = 4, total = bw[0] + bw[1] + gap;
+    let bx = Math.floor((LW - total) / 2);
+    items.forEach((id, k) => {
+      this.button(ctx, id, this.menuLabel(id, ui), bx, Math.min(158, Math.round(y) + 16), bw[k], 11, ui.focus === k);
+      bx += bw[k] + gap;
+    });
+  }
+
+  // Ilustrasi kecil jembatan: papan mini, pita merah dari dinding kiri ke kanan berkedip lalu hilang.
+  drawBridgeDemo(ctx, x, y) {
+    const P = this.pal, w = 56, h = 18;
+    ctx.fillStyle = P.frame; ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = P.boardA; ctx.fillRect(x, y, w, h);
+    for (let bx = 0; bx < w; bx += 4) {           // alas bergaris
+      ctx.fillStyle = this.sandCss[(bx / 4) % 2 ? 3 : 2][1];
+      ctx.fillRect(x + bx, y + h - 6, 4, 6);
+    }
+    const t = this.time % 2.4;                     // 0-1.6 terlihat, lalu kedip, lalu kosong
+    if (t < 2.0) {
+      const blink = t > 1.6 && Math.floor(this.time * 16) % 2 === 0;
+      for (let bx = 0; bx < w; bx++) {
+        const top = y + h - 10 - Math.round(1.5 + Math.sin(bx * 0.35) * 1.5);
+        ctx.fillStyle = blink ? '#ffffff' : this.sandCss[1][(bx >> 1) % 4];
+        ctx.fillRect(x + bx, top, 1, y + h - 6 - top);
+      }
+    }
+    // dinding kiri & kanan ditandai
+    ctx.fillStyle = P.accent;
+    ctx.fillRect(x - 3, y + 2, 2, h - 4);
+    ctx.fillRect(x + w + 1, y + 2, 2, h - 4);
+  }
+
+  // Penanda di papan saat tutorial: dinding kiri & kanan menyala, panah ke target.
+  drawTutorialMarks(ctx, v) {
+    const m = v.mark;
+    if (!m) return;
+    const P = this.pal, on = Math.floor(this.time * 4) % 2 === 0;
+    if (m.walls) {
+      ctx.fillStyle = on ? P.accent : P.frame;
+      ctx.fillRect(BX - 2, BY + CFG.DANGER_Y, 2, H - CFG.DANGER_Y + 2);
+      ctx.fillRect(BX + W, BY + CFG.DANGER_Y, 2, H - CFG.DANGER_Y + 2);
+    }
+    const bob = Math.round(Math.sin(this.time * 6) * 1.5);
+    ctx.fillStyle = P.accent;
+    if (m.arrowX != null) {
+      // panah ke bawah di atas lubang
+      const x = BX + m.arrowX, y = BY + m.arrowY + bob;
+      ctx.fillRect(x - 1, y - 6, 2, 4);
+      for (let r = 0; r < 4; r++) ctx.fillRect(x - 4 + r, y - 2 + r, 8 - 2 * r, 1);
+    }
+    if (m.push) {
+      // tiga panah ke kanan menuju dinding kanan
+      const shift = Math.floor(this.time * 8) % 4;
+      for (let k = 0; k < 3; k++) {
+        const x = BX + W - 24 + k * 6 + shift, y = BY + m.arrowY;
+        for (let r = 0; r < 4; r++) ctx.fillRect(x + r, y - 3 + r, 1, 7 - 2 * r);
+      }
+    }
+  }
+
+  // Panel samping saat tutorial (menggantikan skor/level).
+  drawTutorialPanel(ctx, v, ui) {
+    const P = this.pal, MW = LW - PX - 4;
+    this.txt('TUTORIAL', PX, 10, P.dim);
+    for (let k = 0; k < v.total; k++) {           // titik kemajuan
+      ctx.fillStyle = k < v.n - 1 || (k === v.n - 1 && v.good) ? P.accent : k === v.n - 1 ? P.text : P.frame;
+      ctx.fillRect(PX + k * 6, 19, 4, 4);
+    }
+    let y = 28;
+    this.txt(v.title, PX, y, v.good ? P.accent : P.text, 1.5);
+    y += this.th(1.5) + 4;
+    const lines = this.wrap(v.body, MW);
+    lines.forEach((line, i) => {
+      this.txt(line, PX, y, v.retry && i === 0 ? P.danger : P.text);
+      y += 7;
+    });
+    y += 4;
+    for (const row of v.keys) { this.keyHints(ctx, y, row, PX); y += 12; }
+    this.txt(ui.touch ? 'MENU: LEWATI' : 'ESC: LEWATI', PX, 158, P.dim);
+    this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
+  }
+
+  drawTutDone(ctx, ui) {
+    const P = this.pal;
+    this.dim(ctx, 0.86);
+    this.txt('SIAP MAIN!', LW / 2, 24, P.accent, 2, 'center');
+    let y = 48;
+    const lines = [
+      'JANGAN BIARKAN PASIR LEWAT GARIS MERAH ATAS.',
+      'MATERIAL DAN GANGGUAN BARU DIJELASKAN SAAT MUNCUL.',
+    ];
+    for (const text of lines) {
+      for (const line of this.wrap(text, LW - 24)) { this.txt(line, LW / 2, y, P.text, 1, 'center'); y += 8; }
+      y += 5;
+    }
+    const items = (ui.menuItems || ['play', 'menu']).map((id) => [id, id === 'play' ? 'MAIN SEKARANG' : this.menuLabel(id, ui)]);
+    this.menu(ctx, ui, items, 110, 96, 15);
   }
 
   drawPause(ctx, ui) {

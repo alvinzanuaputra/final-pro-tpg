@@ -241,6 +241,7 @@ function startGame() {
   ui.over = null;
   ui.lbStatus = '';
   overTimer = 0;
+  lb.startRun();   // server mencatat waktu mulai; skor hanya diterima untuk run ini
   setScreen('play');
   enableInputNextFrame();
 }

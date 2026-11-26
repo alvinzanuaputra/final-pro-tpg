@@ -1,9 +1,10 @@
 <?php
 // =============================================================================
-// KONFIGURASI DATABASE — SANDTILT
+// KONFIGURASI DATABASE — SANDTILT (versi gameedukasi)
 // Salin file ini menjadi db_config.php lalu isi kredensial server.
 // db_config.php TIDAK di-commit ke git (lihat .gitignore).
-// Kalau DB_HOST kosong / MySQL gagal, otomatis pakai SQLite lokal untuk tes.
+// Kalau DB_HOST kosong / MySQL gagal, otomatis pakai SQLite lokal untuk tes
+// (tabelnya dibuat otomatis oleh leaderboard.php).
 // =============================================================================
 
 define('DB_HOST', '');            // contoh di server: 'localhost'
@@ -12,8 +13,12 @@ define('DB_USER', '');
 define('DB_PASS', '');
 define('DB_PORT', 3306);
 
-// Prefix tabel = NRP pengunggah (lihat database.sql)
-define('TABLE_LEADERBOARD', '5025231064_sandtilt_leaderboard');
+// Prefix tabel = NRP pengunggah + nama game (lihat database.sql).
+// Tabel yang dipakai: <prefix>_players, <prefix>_scores, <prefix>_runs.
+define('TABLE_PREFIX', '5025231064_sandtilt');
+
+// Garam untuk hash IP (pembatasan jumlah permainan per IP). Ganti dengan teks acak di server.
+define('IP_SALT', 'sandtilt');
 
 function getDBConnection()
 {
@@ -40,21 +45,6 @@ function getDBConnection()
     // 2. SQLite lokal untuk pengujian
     try {
         $pdo = new PDO('sqlite:' . __DIR__ . '/database_simulasi.sqlite', null, null, $opts);
-        $pdo->exec('CREATE TABLE IF NOT EXISTS `' . TABLE_LEADERBOARD . '` (
-            `id` INTEGER PRIMARY KEY AUTOINCREMENT,
-            `player_uuid` TEXT NOT NULL,
-            `player_name` TEXT NOT NULL,
-            `week_start` TEXT NOT NULL,
-            `score` INTEGER NOT NULL,
-            `max_chain` INTEGER NOT NULL DEFAULT 0,
-            `level` INTEGER NOT NULL DEFAULT 1,
-            `clears` INTEGER NOT NULL DEFAULT 0,
-            `duration_sec` INTEGER NOT NULL DEFAULT 0,
-            `last_submit` INTEGER NOT NULL DEFAULT 0,
-            `created_at` TEXT DEFAULT CURRENT_TIMESTAMP,
-            `updated_at` TEXT DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (`player_uuid`, `week_start`)
-        )');
         return $pdo;
     } catch (Exception $e) {
         error_log('SandTilt SQLite gagal: ' . $e->getMessage());

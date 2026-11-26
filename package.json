@@ -1,0 +1,16 @@
+{
+  "name": "sandtilt",
+  "private": true,
+  "type": "module",
+  "description": "SandTilt: game statis + Vercel Function leaderboard pusat (api/leaderboard.js)",
+  "scripts": {
+    "bundle": "node tools/build-bundle.mjs",
+    "test:api": "node tools/test-leaderboard-api.mjs"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

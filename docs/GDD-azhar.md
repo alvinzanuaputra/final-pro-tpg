@@ -130,7 +130,7 @@ M_multi = 1 + 0,5 × (jumlah jembatan bersamaan − 1)
 - Naik level setiap **5 clear** (bukan skor), mirip Tetris modern yang naik tiap 10 baris. Dua jembatan sekaligus = 2 clear.
 - Kurvanya **bergerigi**, bukan naik terus: setiap **level ke-5 adalah level boss** (event jauh lebih sering, kecepatan tidak ikut naik), dan level sesudahnya adalah **lembah** (kecepatan turun sedikit, event jarang) supaya pemain sempat bernapas.
 - Di level boss, angka LEVEL di panel samping berwarna khusus (warna `boss` di tiap tema; kontras ≥ 5:1 dengan latar dan berbeda dari warna teks & aksen). Tidak ada banner.
-- Kecepatan berhenti di **0,15 detik/baris** (level 27). Setelah itu kesulitan tetap naik pelan lewat event yang makin rapat dan batu yang makin sering.
+- Kecepatan berhenti di **0,10 detik/baris** (level 40). Setelah itu kesulitan tetap naik pelan lewat event yang makin rapat dan batu yang makin sering.
 - Peluang batu & mesiu di tabel adalah peluang **nyata** per piece (kode sudah mengoreksi aturan "tidak dua material khusus berturut-turut").
 
 | Level | Tipe | Jatuh (dtk/baris) | Warna | Batu | Mesiu | Jeda event (dtk) |
@@ -150,7 +150,10 @@ M_multi = 1 + 0,5 × (jumlah jembatan bersamaan − 1)
 | 17–19 | normal | 0,25 → 0,21 | 5 | 4% | 14% | 30–45 |
 | 20 | **boss** | 0,21 | 5 | 4% | 14% | **12–18** |
 | 21–25 | pola sama | 0,20 → 0,17 | 5 | 5% | 14% | normal 28–40, boss 10–16, lembah 60–90 |
-| 26+ | pola sama | turun 0,01/level, **min 0,15** (level 27) | 5 | +1% tiap 10 level (L31 6% … **L71+ 10%**) | 14% | tiap 5 level makin rapat: normal min 16–28, boss min 6–12, lembah min 35–65 |
+| 26–30 | pola sama | 0,16 → **0,12** (turun 0,01/level) | 5 | 5% | 14% | tiap 5 level makin rapat (lihat baris bawah) |
+| 31–34 | pola sama | 0,12 | 5 | 6% | 14% | 〃 |
+| 35–39 | pola sama | **0,11** | 5 | 6% | 14% | 〃 |
+| 40+ | pola sama | **0,10** (minimum) | 5 | +1% tiap 10 level (L41 7% … **L71+ 10%**) | 14% | tiap 5 level makin rapat: normal min 16–28, boss min 6–12, lembah min 35–65 |
 
 - **Ruang napas:** saat warna baru masuk (level 4 dan 12), kecepatan memakai angka level sebelumnya selama 30 detik.
 - Saat masuk level boss, hitung mundur event langsung dipendekkan; saat masuk lembah, langsung dipanjangkan.

@@ -263,7 +263,7 @@ function startGame() {
     game.numColors = colorsForLevel(TEST.level);
     game.eventTimer = Math.min(game.eventTimer, game.randRange(levelConfig(TEST.level).eventGap));
   }
-  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR & PRESTASI TIDAK DISIMPAN');
+  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR DAN PRESTASI TIDAK DISIMPAN');
   ach.sessionNew = 0;
   ui.over = null;
   ui.lbStatus = '';

@@ -74,10 +74,17 @@ const CFG = {
 // ------------------------------------------------------------ kesulitan per level
 // Kurva bergerigi (GDD 4.2): tiap level ke-5 adalah level BOSS (event jauh lebih sering,
 // kecepatan tidak ikut naik); level sesudahnya LEMBAH (kecepatan turun, event jarang).
-// Setelah kecepatan mentok (level 27) yang terus naik pelan hanya event dan batu.
+// Setelah kecepatan mentok (level 40) yang terus naik pelan hanya event dan batu.
 const FALL = [0.8, 0.72, 0.65, 0.58, 0.58, 0.55, 0.5, 0.455, 0.41, 0.41, 0.38, 0.35, 0.32,
   0.29, 0.29, 0.27, 0.25, 0.23, 0.21, 0.21, 0.2, 0.19, 0.18, 0.17, 0.17];   // detik per baris, level 1..25
-const FALL_MIN = 0.15;
+// Level 26..30 turun 0,01/level (0,16 → 0,12), lalu 0,11 di level 35 dan 0,10 (minimum) di level 40.
+function fallFor(level) {
+  if (level <= FALL.length) return FALL[level - 1];
+  if (level <= 30) return Math.round((FALL[FALL.length - 1] - (level - FALL.length) * 0.01) * 100) / 100;
+  if (level < 35) return 0.12;
+  if (level < 40) return 0.11;
+  return 0.10;
+}
 // Jeda antar event [min, maks] detik untuk level 1..20 (event pertama tetap EVENT_FIRST).
 const EVENT_GAPS = [[45, 75], [45, 75], [45, 70], [40, 65], [20, 30], [60, 90], [40, 60], [40, 60], [40, 60],
   [18, 25], [60, 90], [35, 50], [35, 50], [35, 50], [15, 22], [60, 90], [30, 45], [30, 45], [30, 45], [12, 18]];
@@ -125,8 +132,7 @@ function eventGap(level) {
 // Semua angka kesulitan untuk satu level. Peluang batu/mesiu = peluang NYATA per piece.
 function levelConfig(level) {
   level = Math.max(1, Math.floor(level));
-  const fall = CFG.FALL_OVERRIDE > 0 ? CFG.FALL_OVERRIDE
-    : level <= FALL.length ? FALL[level - 1] : Math.max(FALL_MIN, FALL[FALL.length - 1] - (level - FALL.length) * 0.01);
+  const fall = CFG.FALL_OVERRIDE > 0 ? CFG.FALL_OVERRIDE : fallFor(level);
   return {
     fall, colors: colorsForLevel(level), stone: stoneChance(level), gun: gunChance(level),
     eventGap: eventGap(level), boss: isBossLevel(level), trough: isTroughLevel(level),
@@ -3469,7 +3475,7 @@ function startGame() {
     game.numColors = colorsForLevel(TEST.level);
     game.eventTimer = Math.min(game.eventTimer, game.randRange(levelConfig(TEST.level).eventGap));
   }
-  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR & PRESTASI TIDAK DISIMPAN');
+  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR DAN PRESTASI TIDAK DISIMPAN');
   ach.sessionNew = 0;
   ui.over = null;
   ui.lbStatus = '';

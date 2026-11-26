@@ -14,13 +14,16 @@ import { neon } from '@neondatabase/serverless';
 import { handle, SCHEMA } from '../server/leaderboard-core.js';
 
 // Origin bawaan yang boleh memanggil API dari browser. Origin milik deployment ini sendiri
-// (termasuk preview *.vercel.app) selalu diizinkan.
+// selalu diizinkan. Tambah platform baru di sini (lewat PR) atau lewat variabel ALLOWED_ORIGINS.
 const DEFAULT_ORIGINS = [
   'https://sandtilt.vercel.app',
+  'https://sandtilt-azhar.vercel.app',              // deploy Vercel milik Azhar (tampilan saja, tanpa database)
   'https://gameedukasi.com', 'https://www.gameedukasi.com',
   'http://gameedukasi.com', 'http://www.gameedukasi.com',
 ];
 const PATTERNS = [
+  // preview project sandtilt & sandtilt-azhar, mis. sandtilt-git-dev-azhar-alvin.vercel.app
+  /^https:\/\/sandtilt-[a-z0-9-]+\.vercel\.app$/,
   /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,     // tes lokal
   /^https:\/\/[a-z0-9-]+\.itch\.zone$/,             // game HTML di itch.io
 ];

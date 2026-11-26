@@ -1,6 +1,8 @@
 import { store } from './util.js';
 
-// Klien leaderboard. Server utama = API pusat di Vercel (satu papan untuk semua platform).
+// Klien leaderboard. Server utama = API pusat di sandtilt.vercel.app (satu papan untuk semua platform);
+// hanya deployment itu yang punya database. Deployment lain (Vercel lain, gameedukasi, itch.io, ...)
+// cuma tampilan yang memanggil API pusat, jadi tidak perlu database sendiri.
 // Di gameedukasi, kalau server pusat tidak bisa dihubungi, pindah ke api/leaderboard.php lokal.
 // Tanpa server sama sekali → mode offline (skor disimpan di localStorage).
 //
@@ -17,7 +19,8 @@ function apiList() {
   if (force === 'off') return [];
   const host = location.hostname;
   if (location.protocol === 'file:') return [];                              // dibuka dari disk: offline
-  if (/\.vercel\.app$/.test(host)) return ['/api/leaderboard'];              // deployment Vercel: API di domain sendiri
+  if (host === new URL(CENTRAL_API).hostname) return ['/api/leaderboard'];   // server pusat itu sendiri
+  if (/\.vercel\.app$/.test(host)) return [CENTRAL_API];                     // Vercel lain (sandtilt-azhar, preview): tanpa PHP
   if (host === 'localhost' || host === '127.0.0.1') return [LOCAL_PHP_API];  // tes lokal tidak mengotori papan pusat
   return [CENTRAL_API, LOCAL_PHP_API];                                       // gameedukasi & platform lain
 }

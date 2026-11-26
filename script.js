@@ -21,11 +21,7 @@ const MAT_STONE = 1;        // Batu: benda kaku. Satu kelompok batu bergerak seb
 const MAT_GUN = 2;          // Mesiu: seperti pasir, meledak kalau ikut/tersentuh clear
 
 const CFG = {
-  // Material
-  GUN_LEVEL: 2,                    // mesiu mulai muncul di level ini
-  GUN_CHANCE: 0.1,
-  STONE_LEVEL: 3,                  // batu mulai muncul di level ini
-  STONE_CHANCE: 0.08,
+  // Material (peluang per level ada di levelConfig di bawah)
   BLAST_RADIUS: 7,                 // radius ledakan per butir mesiu (dalam butir)
 
   TICK_HZ: 60,
@@ -37,10 +33,8 @@ const CFG = {
   LOCK_RESETS: 8,
   SOFT_DROP_SPEED: 120,            // butir per detik saat soft drop
 
-  GRAVITY_BASE: 0.8,               // detik per baris blok di level 1
-  GRAVITY_DECAY: 0.85,
-  GRAVITY_MIN: 0.08,
-  CLEARS_PER_LEVEL: 5,
+  CLEARS_PER_LEVEL: 5,             // level naik setiap N clear (bukan skor), seperti Tetris "fixed goal"
+  FALL_OVERRIDE: 0,                // > 0: kecepatan jatuh tetap (detik/baris) di semua level; dipakai mode uji ?jatuh=
   BREATHER: 30,                    // detik kecepatan diturunkan 1 level saat warna baru masuk
 
   // Tilt: tahan Q/E selama meter masih ada.
@@ -51,7 +45,6 @@ const CFG = {
 
   // Event pengganggu
   EVENT_FIRST: [35, 50],           // detik sampai event pertama (acak di rentang ini)
-  EVENT_GAP: [45, 75],             // jeda antar event (makin pendek di level tinggi)
   EVENT_WARN: 3,                   // detik peringatan sebelum event mulai
   QUAKE_DURATION: 1.6,
   QUAKE_JITTER: 0.35,
@@ -73,16 +66,64 @@ const CFG = {
   ARR: 0.05,
 };
 
-// Jumlah warna aktif berdasarkan level.
+// ------------------------------------------------------------ kesulitan per level
+// Kurva bergerigi (GDD 4.2): tiap level ke-5 adalah level BOSS (event jauh lebih sering,
+// kecepatan tidak ikut naik); level sesudahnya LEMBAH (kecepatan turun, event jarang).
+// Setelah kecepatan mentok (level 27) yang terus naik pelan hanya event dan batu.
+const FALL = [0.8, 0.72, 0.65, 0.58, 0.58, 0.55, 0.5, 0.455, 0.41, 0.41, 0.38, 0.35, 0.32,
+  0.29, 0.29, 0.27, 0.25, 0.23, 0.21, 0.21, 0.2, 0.19, 0.18, 0.17, 0.17];   // detik per baris, level 1..25
+const FALL_MIN = 0.15;
+// Jeda antar event [min, maks] detik untuk level 1..20 (event pertama tetap EVENT_FIRST).
+const EVENT_GAPS = [[45, 75], [45, 75], [45, 70], [40, 65], [20, 30], [60, 90], [40, 60], [40, 60], [40, 60],
+  [18, 25], [60, 90], [35, 50], [35, 50], [35, 50], [15, 22], [60, 90], [30, 45], [30, 45], [30, 45], [12, 18]];
+
+const isBossLevel = (level) => level % 5 === 0;
+const isTroughLevel = (level) => level > 1 && level % 5 === 1;
+
 function colorsForLevel(level) {
-  if (level >= 6) return 5;
-  if (level >= 3) return 4;
+  if (level >= 12) return 5;
+  if (level >= 4) return 4;
   return 3;
+}
+
+// Peluang piece batu (menghambat): mulai level 7, 5% di level 21 lalu +1% tiap 10 level, maks 10%.
+function stoneChance(level) {
+  if (level >= 21) return Math.min(0.10, 0.05 + Math.floor((level - 21) / 10) * 0.01);
+  if (level >= 12) return 0.04;
+  if (level >= 7) return 0.03;
+  return 0;
+}
+// Peluang piece mesiu (membantu: ledakannya ikut menghapus pasir & batu).
+function gunChance(level) {
+  if (level >= 16) return 0.14;
+  if (level >= 11) return 0.12;
+  if (level >= 6) return 0.10;
+  if (level >= 2) return 0.08;
+  return 0;
+}
+function eventGap(level) {
+  if (level <= 20) return EVENT_GAPS[level - 1];
+  const k = Math.max(0, Math.floor((level - 26) / 5));   // makin rapat tiap 5 level setelah level 25
+  const around = (mid, spread) => [mid - spread, mid + spread];
+  if (isBossLevel(level)) return around(Math.max(9, 13 - k * 0.5), 3);
+  if (isTroughLevel(level)) return around(Math.max(50, 75 - k * 2), 15);
+  return around(Math.max(22, 34 - k), 6);
+}
+
+// Semua angka kesulitan untuk satu level. Peluang batu/mesiu = peluang NYATA per piece.
+function levelConfig(level) {
+  level = Math.max(1, Math.floor(level));
+  const fall = CFG.FALL_OVERRIDE > 0 ? CFG.FALL_OVERRIDE
+    : level <= FALL.length ? FALL[level - 1] : Math.max(FALL_MIN, FALL[FALL.length - 1] - (level - FALL.length) * 0.01);
+  return {
+    fall, colors: colorsForLevel(level), stone: stoneChance(level), gun: gunChance(level),
+    eventGap: eventGap(level), boss: isBossLevel(level), trough: isTroughLevel(level),
+  };
 }
 
 const STORAGE_PREFIX = 'sandtilt.';
 
-return { BLOCK, COLS, ROWS, W, H, MAT_SAND, MAT_STONE, MAT_GUN, CFG, colorsForLevel, STORAGE_PREFIX };
+return { BLOCK, COLS, ROWS, W, H, MAT_SAND, MAT_STONE, MAT_GUN, CFG, isBossLevel, isTroughLevel, colorsForLevel, levelConfig, STORAGE_PREFIX };
 })();
 
 // ===================================================================== js/util.js
@@ -491,7 +532,7 @@ return { TYPES, SHAPES, Bag };
 
 // ===================================================================== js/game.js
 __mod["game"] = (function () {
-const { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel } = __mod["config"];
+const { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig } = __mod["config"];
 const { makeRng } = __mod["util"];
 const { Sand } = __mod["sim"];
 const { SHAPES, Bag } = __mod["pieces"];
@@ -550,18 +591,23 @@ class Game {
     const color = 1 + Math.floor(this.rng() * this.numColors);
     const roll = this.rng();
     // Material khusus muncul sesekali (tetap punya warna), tidak dua kali berturut-turut.
+    // Karena aturan "tidak berturut-turut", peluang undian dinaikkan supaya peluang NYATA per piece
+    // sama dengan tabel: kalau target total T, undian p = T / (1 − T).
+    const { stone, gun } = levelConfig(this.level);
+    const total = stone + gun;
+    const k = total > 0 ? 1 / (1 - total) : 0;
     let mat = MAT_SAND;
     if (this.lastSpecial === MAT_SAND) {
-      if (this.level >= CFG.GUN_LEVEL && roll < CFG.GUN_CHANCE) mat = MAT_GUN;
-      else if (this.level >= CFG.STONE_LEVEL && roll >= 1 - CFG.STONE_CHANCE) mat = MAT_STONE;
+      if (roll < gun * k) mat = MAT_GUN;
+      else if (roll >= 1 - stone * k) mat = MAT_STONE;
     }
     this.lastSpecial = mat;
     return { type, color, mat };
   }
 
+  // Ruang napas (warna baru masuk): kecepatan memakai level sebelumnya selama CFG.BREATHER detik.
   gravityInterval() {
-    const lvl = Math.max(1, this.level - (this.breather > 0 ? 1 : 0));
-    return Math.max(CFG.GRAVITY_MIN, CFG.GRAVITY_BASE * Math.pow(CFG.GRAVITY_DECAY, lvl - 1));
+    return levelConfig(Math.max(1, this.level - (this.breather > 0 ? 1 : 0))).fall;
   }
 
   blocksOf(p, rot = p.rot) { return SHAPES[p.type].rots[rot]; }
@@ -720,8 +766,7 @@ class Game {
       this.events.emit('eventEnd', e);
       this.event = null;
       this.eventsSurvived++;
-      const scale = Math.max(0.5, 1 - (this.level - 1) * 0.05);
-      this.eventTimer = this.randRange(CFG.EVENT_GAP) * scale;
+      this.eventTimer = this.randRange(levelConfig(this.level).eventGap);
     }
   }
 
@@ -781,9 +826,16 @@ class Game {
     const newLevel = 1 + Math.floor(this.clears / CFG.CLEARS_PER_LEVEL);
     if (newLevel > this.level) {
       this.level = newLevel;
-      const n = colorsForLevel(newLevel);
-      if (n > this.numColors) { this.numColors = n; this.breather = CFG.BREATHER; }
-      this.events.emit('levelUp', { level: this.level, colors: this.numColors, tiltsUsed: this.tilt.used });
+      const lc = levelConfig(newLevel);
+      if (lc.colors > this.numColors) { this.numColors = lc.colors; this.breather = CFG.BREATHER; }
+      // Hitung mundur event ikut jeda level baru: level boss langsung lebih rapat,
+      // level lembah langsung lebih longgar (event yang sedang berjalan tidak diganggu).
+      if (!this.event) {
+        const next = this.randRange(lc.eventGap);
+        if (lc.boss) this.eventTimer = Math.min(this.eventTimer, next);
+        else if (lc.trough) this.eventTimer = Math.max(this.eventTimer, next);
+      }
+      this.events.emit('levelUp', { level: this.level, colors: this.numColors, boss: lc.boss, tiltsUsed: this.tilt.used });
     }
   }
 
@@ -1005,7 +1057,7 @@ return { drawBlockText, blockTextWidth, GLYPH_W, GLYPH_H, ADVANCE, textWidthPx, 
 
 // ===================================================================== js/render.js
 __mod["render"] = (function () {
-const { W, H, BLOCK, CFG, MAT_STONE, MAT_GUN } = __mod["config"];
+const { W, H, BLOCK, CFG, MAT_STONE, MAT_GUN, isBossLevel } = __mod["config"];
 const { SHAPES } = __mod["pieces"];
 const { drawText, textWidthPx, drawBlockText, blockTextWidth } = __mod["font"];
 
@@ -1021,37 +1073,38 @@ const PALETTES = {
     dim: '#8a84a8', accent: '#f2c14e', danger: '#ff4d5e', shadow: '#0b0a12',
     sand: ['#e8505b', '#f2c14e', '#3fbf8f', '#4c8bf5', '#b45ce0'],
     speck: '#ffb04a',                                    // bintik mesiu
+    boss: '#ff4d5e',                                     // angka LEVEL saat level boss
   },
   retro: {
     bg: '#0d170d', boardA: '#132213', boardB: '#162716', frame: '#3f6f3f', text: '#c8f5b0',
     dim: '#5f9a5a', accent: '#e8ff9a', danger: '#f0ff70', shadow: '#081008',
     sand: ['#f0ffd8', '#a9e47c', '#6fbd4f', '#3f8a32', '#d2d36a'],
-    speck: '#ffff9a',
+    speck: '#ffff9a', boss: '#ff8a5c',
   },
   // ---- tema tambahan (gratis / hadiah prestasi, lihat THEMES di main.js) ----
   senja: {
     bg: '#1e1220', boardA: '#2a1826', boardB: '#2f1b2b', frame: '#7a4a5e', text: '#ffe9d6',
     dim: '#c08a8a', accent: '#ffb347', danger: '#ff4d4d', shadow: '#120a12',
     sand: ['#ff6b5a', '#ffc15e', '#e8dcae', '#5fb8a8', '#9a6fd0'],
-    speck: '#fff0a0', overlay: '18,10,16',
+    speck: '#fff0a0', overlay: '18,10,16', boss: '#ff4d6d',
   },
   neon: {
     bg: '#05050a', boardA: '#0a0a14', boardB: '#0d0d1a', frame: '#2f2f5a', text: '#f0f6ff',
     dim: '#7a86b8', accent: '#39ff88', danger: '#ff2e6e', shadow: '#000000',
     sand: ['#ff3ea5', '#ffe53b', '#39ff88', '#2ee6ff', '#a46bff'],
-    speck: '#ffffff', overlay: '0,0,4',
+    speck: '#ffffff', overlay: '0,0,4', boss: '#ff2e6e',
   },
   kertas: {   // tema terang
     bg: '#efe6d2', boardA: '#e6dcc4', boardB: '#e0d5ba', frame: '#a8977a', text: '#3b3046',
     dim: '#7d6f82', accent: '#d9573b', danger: '#c8283c', shadow: '#fbf6ea',
     sand: ['#e0685a', '#e8b04a', '#5aa77f', '#5a86c8', '#9a72c2'],
-    speck: '#5a3a1a', overlay: '239,230,210',
+    speck: '#5a3a1a', overlay: '239,230,210', boss: '#2456c8',   // biru: aksen tema ini sudah merah
   },
   kontras: {  // warna Okabe-Ito: tetap bisa dibedakan oleh penderita buta warna
     bg: '#000000', boardA: '#0b0b0b', boardB: '#141414', frame: '#5a5a5a', text: '#ffffff',
     dim: '#b4b4b4', accent: '#ffd400', danger: '#ff3030', shadow: '#000000',
     sand: ['#d55e00', '#f0e442', '#009e73', '#56b4e9', '#cc79a7'],
-    speck: '#ffffff', overlay: '0,0,0',
+    speck: '#ffffff', overlay: '0,0,0', boss: '#ff3030',
   },
 };
 
@@ -1159,7 +1212,7 @@ class Renderer {
       if (d.chain > 1) this.addFloat(`CHAIN X${d.chain}!`, cx, cy + 7, this.pal.accent);
     });
     ev.on('cleared', (d) => this.burst(d.cells, d.colors));
-    ev.on('levelUp', (d) => this.addFloat(`LEVEL ${d.level}!`, BX + W / 2, BY + 50, this.pal.accent, 1.6));
+    ev.on('levelUp', (d) => this.addFloat(`LEVEL ${d.level}!`, BX + W / 2, BY + 50, d.boss ? this.pal.boss : this.pal.accent, 1.6));
     ev.on('gameOver', () => { this.shake = 6; });
     ev.on('quake', () => { this.shake = 10; });
     ev.on('eventStart', (e) => { if (e.type === 'quake') this.shake = 6; });
@@ -1526,7 +1579,8 @@ class Renderer {
 
     label('SKOR'); value(g.score);
     label('TERBAIK'); value(Math.max(ui.best, g.score), P.dim);
-    label('LEVEL'); value(g.level + (g.breather > 0 ? ' ~' : ''));
+    // level boss: angka LEVEL memakai warna boss tema (kontras >= 5:1 dengan latar, beda dari teks & aksen)
+    label('LEVEL'); value(g.level + (g.breather > 0 ? ' ~' : ''), isBossLevel(g.level) ? P.boss : P.text);
     label('CHAIN'); value(g.chain > 0 ? 'X' + g.chain : '-', g.chain > 1 ? P.accent : P.text);
 
     // meter miring
@@ -2312,7 +2366,7 @@ class Achievements {
   }
 
   unlock(id) {
-    if (this.unlocked.has(id)) return false;
+    if (this.disabled || this.unlocked.has(id)) return false;   // disabled: mode uji (lihat main.js)
     const def = ACHIEVEMENTS.find((a) => a.id === id);
     if (!def) return false;
     this.unlocked.add(id);
@@ -2365,7 +2419,9 @@ return { ACHIEVEMENTS, Achievements };
 __mod["leaderboard"] = (function () {
 const { store } = __mod["util"];
 
-// Klien leaderboard. Server utama = API pusat di Vercel (satu papan untuk semua platform).
+// Klien leaderboard. Server utama = API pusat di sandtilt.vercel.app (satu papan untuk semua platform);
+// hanya deployment itu yang punya database. Deployment lain (Vercel lain, gameedukasi, itch.io, ...)
+// cuma tampilan yang memanggil API pusat, jadi tidak perlu database sendiri.
 // Di gameedukasi, kalau server pusat tidak bisa dihubungi, pindah ke api/leaderboard.php lokal.
 // Tanpa server sama sekali → mode offline (skor disimpan di localStorage).
 //
@@ -2382,7 +2438,8 @@ function apiList() {
   if (force === 'off') return [];
   const host = location.hostname;
   if (location.protocol === 'file:') return [];                              // dibuka dari disk: offline
-  if (/\.vercel\.app$/.test(host)) return ['/api/leaderboard'];              // deployment Vercel: API di domain sendiri
+  if (host === new URL(CENTRAL_API).hostname) return ['/api/leaderboard'];   // server pusat itu sendiri
+  if (/\.vercel\.app$/.test(host)) return [CENTRAL_API];                     // Vercel lain (sandtilt-azhar, preview): tanpa PHP
   if (host === 'localhost' || host === '127.0.0.1') return [LOCAL_PHP_API];  // tes lokal tidak mengotori papan pusat
   return [CENTRAL_API, LOCAL_PHP_API];                                       // gameedukasi & platform lain
 }
@@ -2570,6 +2627,7 @@ const { Input } = __mod["input"];
 const { sfx, unlockAudio, setSoundMode, getSoundMode, cycleSoundMode, setMusic, setDanger, setPausedMusic, audioDebug } = __mod["audio"];
 const { Achievements } = __mod["achievements"];
 const { Leaderboard, validName } = __mod["leaderboard"];
+const { CFG, colorsForLevel, levelConfig } = __mod["config"];
 
 const STEP = 1 / 60;
 const canvas = document.getElementById('screen');
@@ -2798,10 +2856,30 @@ function goTitle() {
   setScreen('title');
 }
 
+// Mode uji (untuk mencoba kesulitan):
+//   ?jatuh=0.15  → kecepatan jatuh tetap 0,15 detik per baris di semua level
+//   ?level=12    → mulai langsung di level 12
+// Selama mode uji, skor tidak dikirim/disimpan dan prestasi tidak terbuka.
+const TEST = {
+  fall: Number(params.get('jatuh')) || 0,
+  level: Math.max(1, Math.min(99, Math.floor(Number(params.get('level')) || 1))),
+};
+TEST.on = TEST.fall > 0 || TEST.level > 1;
+if (TEST.fall > 0) CFG.FALL_OVERRIDE = Math.max(0.02, Math.min(2, TEST.fall));
+ach.disabled = TEST.on;
+
 function startGame() {
   unlockAudio();
   const seed = params.has('seed') ? Number(params.get('seed')) : (Date.now() ^ (Math.random() * 1e9)) >>> 0;
   game.reset(seed);
+  if (TEST.level > 1) {
+    // mulai langsung di level tertentu (warna, batu, mesiu, event ikut level itu)
+    game.level = TEST.level;
+    game.clears = (TEST.level - 1) * CFG.CLEARS_PER_LEVEL;
+    game.numColors = colorsForLevel(TEST.level);
+    game.eventTimer = Math.min(game.eventTimer, game.randRange(levelConfig(TEST.level).eventGap));
+  }
+  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR & PRESTASI TIDAK DISIMPAN');
   ach.sessionNew = 0;
   ui.over = null;
   ui.lbStatus = '';
@@ -2991,6 +3069,14 @@ function onGameOver(stats) {
   input.enabled = false;
   input.releaseAll();
   sfx.gameOver();
+  if (TEST.on) {
+    // mode uji: hasil hanya ditampilkan, tidak masuk rekor, skor lokal, atau peringkat
+    ui.over = { ...stats, newBest: false, newAch: 0 };
+    overTimer = 0.9;
+    ui.lbStatus = 'MODE UJI - SKOR TIDAK DISIMPAN';
+    ui.lbStatusColor = renderer.pal.dim;
+    return;
+  }
   const newBest = stats.score > ui.best;
   if (newBest) { ui.best = stats.score; store.set('best', ui.best); }
   ui.over = { ...stats, newBest, newAch: 0 };

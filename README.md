@@ -110,7 +110,8 @@ Satu papan peringkat untuk semua platform, dilayani **API pusat di Vercel**: `ht
 
 | Game dibuka dari | Server yang dipakai |
 |---|---|
-| `*.vercel.app` | `/api/leaderboard` di domain itu sendiri |
+| `sandtilt.vercel.app` (server pusat) | `/api/leaderboard` di domain itu sendiri |
+| Vercel lain (`sandtilt-azhar.vercel.app`, preview `sandtilt-….vercel.app`) | API pusat (tanpa database sendiri, tidak perlu Neon) |
 | gameedukasi.com & platform lain | API pusat; kalau tidak bisa dihubungi → `api/leaderboard.php` lokal → offline |
 | `localhost` / `127.0.0.1` | `api/leaderboard.php` lokal saja (tes tidak mengotori papan pusat) |
 | klik ganda (`file://`) | offline |
@@ -121,7 +122,8 @@ Paksa satu server dengan `?lb=central`, `?lb=php`, atau `?lb=off`.
 - Tiap pemain punya **token rahasia** di localStorage. Server hanya menyimpan hash-nya; papan hanya menampilkan `public_id`, jadi identitas pemain lain tidak bisa dicuri dari papan.
 - Saat game mulai, klien membuka **run** di server (`start_run`). Skor hanya diterima untuk run itu, **sekali pakai**, dan durasi permainan dicek dengan jam server.
 - Pembukaan run dibatasi **30 per 10 menit per IP**, ditambah uji kewajaran skor (skor vs jumlah clear, level, durasi).
-- API pusat hanya menerima panggilan browser dari origin yang diizinkan (CORS): domain Vercel sendiri, gameedukasi.com, itch.io (`*.itch.zone`), localhost. Tambah origin lain lewat variabel `ALLOWED_ORIGINS`.
+- API pusat hanya menerima panggilan browser dari origin yang diizinkan (CORS): `sandtilt.vercel.app`, `sandtilt-azhar.vercel.app`, preview `sandtilt-….vercel.app`, gameedukasi.com, itch.io (`*.itch.zone`), localhost. Tambah platform lain di `DEFAULT_ORIGINS` pada `api/leaderboard.js` (lewat PR), atau lewat variabel `ALLOWED_ORIGINS` di Vercel.
+- Hanya project **sandtilt** (milik Alvin) yang disambungkan ke Neon. Deploy lain cukup menampilkan game.
 - Catatan jujur: skor dari game browser tidak bisa 100% aman (kode klien bisa diubah). Lapisan di atas membuat curang jauh lebih repot.
 
 ### Menyiapkan API pusat di Vercel (sekali saja)

@@ -23,6 +23,13 @@ if (store.get('scoreVersion', 1) !== SCORE_VERSION) {
   store.set('pending', null);
   store.set('scoreVersion', SCORE_VERSION);
 }
+// Versi aturan PRESTASI. 2: BADAI PASIR (chain x5) sekarang berhadiah Tema Kertas, jadi yang didapat
+// dengan chain lama (bisa di-spam) dicabut sekali dan harus diraih ulang.
+const ACH_VERSION = 2;
+if (store.get('achVersion', 1) < ACH_VERSION) {
+  store.set('ach', store.get('ach', []).filter((id) => id !== 'chain5'));
+  store.set('achVersion', ACH_VERSION);
+}
 
 const canvas = document.getElementById('screen');
 const consoleEl = document.getElementById('console');
@@ -38,7 +45,7 @@ const events = new Emitter();
 const game = new Game(events);
 const renderer = new Renderer(canvas, events);
 const lb = new Leaderboard();
-const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', secret: 'TROFI RAHASIA!' };
+const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', legend: 'TROFI LEGENDA!', secret: 'TROFI RAHASIA!' };
 const ach = new Achievements(events, (def) => {
   renderer.showToast(TIER_TITLE[def.tier] || 'PRESTASI!', def.name, def.tier);
   sfx.achievement(def.tier);
@@ -293,6 +300,8 @@ function startGame() {
 // Bisa diulang dari ikon ? di layar judul → CARA MAIN → MAIN TUTORIAL.
 const tutorial = new Tutorial(game, events, () => {
   store.set('tutorialDone', true);
+  ach.disabled = TEST.on;        // selama tutorial prestasi dimatikan; buka khusus MURID TELADAN
+  ach.unlock('tutorial');
   input.enabled = false;
   input.releaseAll();
   sfx.levelUp();
@@ -400,7 +409,7 @@ const THEMES = [
   { id: 'kontras', name: 'KONTRAS', unlock: null },
   { id: 'retro', name: 'RETRO', unlock: 'counter' },      // hadiah prestasi rahasia LAWAN ARUS
   { id: 'neon', name: 'NEON', unlock: 'quake' },          // hadiah prestasi rahasia GOYANG DUMANG!
-  { id: 'kertas', name: 'KERTAS', unlock: 'close_call' }, // hadiah prestasi NYARIS!
+  { id: 'kertas', name: 'KERTAS', unlock: 'chain5' },     // hadiah prestasi BADAI PASIR (dulu NYARIS!)
 ];
 function themeUnlocked(t) {
   if (!t.unlock || renderer.paletteName === t.id) return true;

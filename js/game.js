@@ -253,9 +253,9 @@ export class Game {
       }
     }
     if (e.t <= 0) {
-      this.events.emit('eventEnd', e);
-      this.event = null;
       this.eventsSurvived++;
+      this.events.emit('eventEnd', { ...e, survived: this.eventsSurvived });
+      this.event = null;
       this.eventTimer = this.randRange(levelConfig(this.level).eventGap);
     }
   }

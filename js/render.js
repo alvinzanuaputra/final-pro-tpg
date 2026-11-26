@@ -51,7 +51,7 @@ export const PALETTES = {
 
 const SHADES = [1.12, 1.0, 0.91, 0.82];
 // warna garis tepi kartu prestasi per tingkat trofi (emas memakai warna aksen palet)
-const TIER_COLOR = { bronze: '#d08a4c', silver: '#c9cbe0', secret: '#b45ce0' };
+const TIER_COLOR = { bronze: '#d08a4c', silver: '#c9cbe0', legend: '#b45ce0', secret: '#b45ce0' };
 // panah pixel 5x5 untuk tombol keyboard di petunjuk kontrol
 const KEY_ARROWS = {
   left: ['..#..', '.#...', '#####', '.#...', '..#..'],
@@ -212,7 +212,7 @@ export class Renderer {
         this.icons[t] = img;
       }
     }
-    const img = this.icons[tier] || this.icons.locked;
+    const img = this.icons[tier === 'legend' ? 'secret' : tier] || this.icons.locked;   // legend memakai trofi ungu
     if (img.complete && img.naturalWidth) ctx.drawImage(img, Math.round(x), Math.round(y), 12, 11);
     else { ctx.fillStyle = this.pal.accent; ctx.fillRect(Math.round(x) + 2, Math.round(y) + 1, 8, 8); }
   }

@@ -267,7 +267,10 @@ export const sfx = {
 
   // jingle
   levelUp() { play('jingle-level', { vol: 0.8 }); duck(0.3, 0.9); },
-  achievement(tier = 'bronze') { play('trophy-' + (buffers['trophy-' + tier] ? tier : 'bronze'), { vol: 0.85 }); duck(0.3, 0.7); },
+  achievement(tier = 'bronze') {
+    if (tier === 'legend') tier = 'secret';   // trofi ungu: suara sama
+    play('trophy-' + (buffers['trophy-' + tier] ? tier : 'bronze'), { vol: 0.85 }); duck(0.3, 0.7);
+  },
   material() { play('jingle-material', { vol: 0.7 }); },
   gameOver() { playMusic(null); play('jingle-gameover', { vol: 0.9 }); },
 };

@@ -805,9 +805,9 @@ class Game {
       }
     }
     if (e.t <= 0) {
-      this.events.emit('eventEnd', e);
-      this.event = null;
       this.eventsSurvived++;
+      this.events.emit('eventEnd', { ...e, survived: this.eventsSurvived });
+      this.event = null;
       this.eventTimer = this.randRange(levelConfig(this.level).eventGap);
     }
   }
@@ -1177,7 +1177,7 @@ const PALETTES = {
 
 const SHADES = [1.12, 1.0, 0.91, 0.82];
 // warna garis tepi kartu prestasi per tingkat trofi (emas memakai warna aksen palet)
-const TIER_COLOR = { bronze: '#d08a4c', silver: '#c9cbe0', secret: '#b45ce0' };
+const TIER_COLOR = { bronze: '#d08a4c', silver: '#c9cbe0', legend: '#b45ce0', secret: '#b45ce0' };
 // panah pixel 5x5 untuk tombol keyboard di petunjuk kontrol
 const KEY_ARROWS = {
   left: ['..#..', '.#...', '#####', '.#...', '..#..'],
@@ -1338,7 +1338,7 @@ class Renderer {
         this.icons[t] = img;
       }
     }
-    const img = this.icons[tier] || this.icons.locked;
+    const img = this.icons[tier === 'legend' ? 'secret' : tier] || this.icons.locked;   // legend memakai trofi ungu
     if (img.complete && img.naturalWidth) ctx.drawImage(img, Math.round(x), Math.round(y), 12, 11);
     else { ctx.fillStyle = this.pal.accent; ctx.fillRect(Math.round(x) + 2, Math.round(y) + 1, 8, 8); }
   }
@@ -2594,7 +2594,10 @@ const sfx = {
 
   // jingle
   levelUp() { play('jingle-level', { vol: 0.8 }); duck(0.3, 0.9); },
-  achievement(tier = 'bronze') { play('trophy-' + (buffers['trophy-' + tier] ? tier : 'bronze'), { vol: 0.85 }); duck(0.3, 0.7); },
+  achievement(tier = 'bronze') {
+    if (tier === 'legend') tier = 'secret';   // trofi ungu: suara sama
+    play('trophy-' + (buffers['trophy-' + tier] ? tier : 'bronze'), { vol: 0.85 }); duck(0.3, 0.7);
+  },
   material() { play('jingle-material', { vol: 0.7 }); },
   gameOver() { playMusic(null); play('jingle-gameover', { vol: 0.9 }); },
 };
@@ -2608,18 +2611,21 @@ const { store } = __mod["util"];
 
 // Deskripsi maksimal 30 karakter supaya muat SATU baris di semua ukuran layar
 // (kartu prestasi maksimal 3 baris: nama + deskripsi + hadiah).
-// tier: bronze | silver | gold | secret → menentukan ikon trofi (assets/image/trophy-*.svg).
+// tier: bronze | silver | gold | legend | secret → ikon trofi (assets/image/trophy-*.svg).
+// legend = trofi ungu yang TERLIHAT (ikon & suara sama dengan secret), untuk prestasi tersulit.
 const ACHIEVEMENTS = [
+  { id: 'tutorial', tier: 'bronze', name: 'MURID TELADAN', desc: 'SELESAIKAN TUTORIAL' },
   { id: 'first_bridge', tier: 'bronze', name: 'JEMBATAN PERTAMA', desc: 'CLEAR PERTAMA KALI' },
   { id: 'chain3', tier: 'silver', name: 'REAKSI BERANTAI', desc: 'CAPAI CHAIN X3' },
-  { id: 'chain5', tier: 'gold', name: 'BADAI PASIR', desc: 'CAPAI CHAIN X5' },
   { id: 'tilt_master', tier: 'silver', name: 'AHLI MIRING', desc: 'CLEAR < 1 DETIK SETELAH MIRING' },
-  { id: 'close_call', tier: 'silver', name: 'NYARIS!', desc: 'CLEAR SAAT DEKAT GARIS BAHAYA', reward: 'TEMA KERTAS' },
+  { id: 'close_call', tier: 'silver', name: 'NYARIS!', desc: 'CLEAR SAAT DEKAT GARIS BAHAYA' },
   { id: 'clean_board', tier: 'gold', name: 'PAPAN BERSIH', desc: 'KOSONGKAN PAPAN SETELAH CLEAR' },
   { id: 'boom', tier: 'bronze', name: 'BOOM!', desc: 'LEDAKKAN MESIU PERTAMA KALI' },
   { id: 'stone_breaker', tier: 'silver', name: 'PENGHANCUR BATU', desc: 'HANCURKAN BATU DENGAN LEDAKAN' },
   { id: 'no_tilt', tier: 'gold', name: 'TANGAN KOSONG', desc: 'LEVEL 5 TANPA MIRING' },
-  { id: 'marathon', tier: 'gold', name: 'MARATON', desc: 'CAPAI LEVEL 10' },
+  { id: 'survivor', tier: 'gold', name: 'TAHAN BANTING', desc: 'BERTAHAN DARI 5 EVENT' },
+  { id: 'marathon', tier: 'gold', name: 'MARATON', desc: 'CAPAI LEVEL 15' },
+  { id: 'chain5', tier: 'legend', name: 'BADAI PASIR', desc: 'CAPAI CHAIN X5', reward: 'TEMA KERTAS' },
   { id: 'quake', tier: 'secret', name: 'GOYANG DUMANG!', desc: 'MIRING KIRI-KANAN 6X < 2 DETIK', hidden: true, reward: 'TEMA NEON' },
   { id: 'counter', tier: 'secret', name: 'LAWAN ARUS', desc: 'TAHAN MIRING LAWAN ARAH PAPAN', hidden: true, reward: 'TEMA RETRO' },
 ];
@@ -2663,8 +2669,10 @@ class Achievements {
     });
     ev.on('levelUp', (d) => {
       if (d.level >= 5 && d.tiltsUsed === 0) this.unlock('no_tilt');
-      if (d.level >= 10) this.unlock('marathon');
+      if (d.level >= 15) this.unlock('marathon');
     });
+    // Event (gempa, angin, papan miring) yang selesai tanpa kalah, dihitung per game.
+    ev.on('eventEnd', (e) => { if (e.survived >= 5) this.unlock('survivor'); });
     // Gempa: 6 percobaan miring bergantian arah dalam 2 detik (charge tidak harus ada).
     ev.on('tiltAttempt', (dir) => {
       const now = performance.now();
@@ -3235,6 +3243,13 @@ if (store.get('scoreVersion', 1) !== SCORE_VERSION) {
   store.set('pending', null);
   store.set('scoreVersion', SCORE_VERSION);
 }
+// Versi aturan PRESTASI. 2: BADAI PASIR (chain x5) sekarang berhadiah Tema Kertas, jadi yang didapat
+// dengan chain lama (bisa di-spam) dicabut sekali dan harus diraih ulang.
+const ACH_VERSION = 2;
+if (store.get('achVersion', 1) < ACH_VERSION) {
+  store.set('ach', store.get('ach', []).filter((id) => id !== 'chain5'));
+  store.set('achVersion', ACH_VERSION);
+}
 
 const canvas = document.getElementById('screen');
 const consoleEl = document.getElementById('console');
@@ -3250,7 +3265,7 @@ const events = new Emitter();
 const game = new Game(events);
 const renderer = new Renderer(canvas, events);
 const lb = new Leaderboard();
-const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', secret: 'TROFI RAHASIA!' };
+const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', legend: 'TROFI LEGENDA!', secret: 'TROFI RAHASIA!' };
 const ach = new Achievements(events, (def) => {
   renderer.showToast(TIER_TITLE[def.tier] || 'PRESTASI!', def.name, def.tier);
   sfx.achievement(def.tier);
@@ -3505,6 +3520,8 @@ function startGame() {
 // Bisa diulang dari ikon ? di layar judul → CARA MAIN → MAIN TUTORIAL.
 const tutorial = new Tutorial(game, events, () => {
   store.set('tutorialDone', true);
+  ach.disabled = TEST.on;        // selama tutorial prestasi dimatikan; buka khusus MURID TELADAN
+  ach.unlock('tutorial');
   input.enabled = false;
   input.releaseAll();
   sfx.levelUp();
@@ -3612,7 +3629,7 @@ const THEMES = [
   { id: 'kontras', name: 'KONTRAS', unlock: null },
   { id: 'retro', name: 'RETRO', unlock: 'counter' },      // hadiah prestasi rahasia LAWAN ARUS
   { id: 'neon', name: 'NEON', unlock: 'quake' },          // hadiah prestasi rahasia GOYANG DUMANG!
-  { id: 'kertas', name: 'KERTAS', unlock: 'close_call' }, // hadiah prestasi NYARIS!
+  { id: 'kertas', name: 'KERTAS', unlock: 'chain5' },     // hadiah prestasi BADAI PASIR (dulu NYARIS!)
 ];
 function themeUnlocked(t) {
   if (!t.unlock || renderer.paletteName === t.id) return true;

@@ -2623,7 +2623,7 @@ const ACHIEVEMENTS = [
   { id: 'boom', tier: 'bronze', name: 'BOOM!', desc: 'LEDAKKAN MESIU PERTAMA KALI' },
   { id: 'stone_breaker', tier: 'silver', name: 'PENGHANCUR BATU', desc: 'HANCURKAN BATU DENGAN LEDAKAN' },
   { id: 'no_tilt', tier: 'gold', name: 'TANGAN KOSONG', desc: 'LEVEL 5 TANPA MIRING' },
-  { id: 'survivor', tier: 'gold', name: 'TAHAN BANTING', desc: 'BERTAHAN DARI 5 EVENT' },
+  { id: 'survivor', tier: 'gold', name: 'TAHAN BANTING', desc: 'BERTAHAN 5 EVENT SEKALI MAIN' },
   { id: 'marathon', tier: 'gold', name: 'MARATON', desc: 'CAPAI LEVEL 15' },
   { id: 'chain5', tier: 'legend', name: 'BADAI PASIR', desc: 'CAPAI CHAIN X5', reward: 'TEMA KERTAS' },
   { id: 'quake', tier: 'secret', name: 'GOYANG DUMANG!', desc: 'MIRING KIRI-KANAN 6X < 2 DETIK', hidden: true, reward: 'TEMA NEON' },

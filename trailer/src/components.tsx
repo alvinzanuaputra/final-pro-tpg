@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
-import { C, LOGO_COLORS, PIXEL_FONT } from './theme';
+// Teks memakai font 5x7 milik game (bukan font luar), lihat docs/BRAND.md
+import { drawText, GLYPH_H, textWidthPx } from '../../js/font.js';
+import { C } from './theme';
 
 // Ukuran asli frame rekaman game (canvas 160x176 x5)
 export const SRC_W = 800;
@@ -47,78 +49,63 @@ export const Footage: React.FC<{
   );
 };
 
-/** Latar gelap dengan garis-garis halus bergerak pelan, seperti latar game. */
-export const Backdrop: React.FC = () => {
-  const frame = useCurrentFrame();
-  const off = (frame * 0.4) % 48;
-  return (
-    <AbsoluteFill
-      style={{
-        backgroundColor: C.bg,
-        backgroundImage: `repeating-linear-gradient(135deg, ${C.bgLine} 0 24px, ${C.bg} 24px 48px)`,
-        backgroundPosition: `${off}px ${off}px`,
-      }}
-    />
-  );
+/** Latar polos warna bg game (sama dengan latar di dalam rekaman, jadi tepi footage menyatu). */
+export const Backdrop: React.FC = () => <AbsoluteFill style={{ backgroundColor: C.bg }} />;
+
+/** Satu baris teks dengan font 5x7 game, digambar di canvas. px = ukuran satu titik glyph. */
+export const GameText: React.FC<{ text: string; px: number; color?: string; shadow?: boolean; style?: React.CSSProperties }> = ({
+  text, px, color = C.text, shadow = true, style,
+}) => {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const w = textWidthPx(text, px) + (shadow ? px : 0);
+  const h = GLYPH_H * px + (shadow ? px : 0);
+  useLayoutEffect(() => {
+    const ctx = ref.current!.getContext('2d')!;
+    ctx.clearRect(0, 0, w, h);
+    if (shadow) drawText(ctx, text, px, px, C.shadow, px);
+    drawText(ctx, text, 0, 0, color, px);
+  }, [text, px, color, shadow, w, h]);
+  return <canvas ref={ref} width={w} height={h} style={{ display: 'block', imageRendering: 'pixelated', ...style }} />;
 };
 
-/** Judul besar yang "menghantam" masuk per kata, lalu memudar keluar. */
+/**
+ * Judul yang "menghantam" masuk per kata (font game), lalu memudar keluar.
+ * Baris dipisah dengan '\n'; `colors[i]` = warna baris ke-i (default teks game).
+ */
 export const SlamText: React.FC<{
   text: string;
-  color?: string;
-  size?: number;
-  x?: number | string;
-  y?: number | string;
+  colors?: string[];
+  px?: number;               // ukuran titik glyph
+  x?: number;
+  y?: number;
   align?: 'left' | 'center' | 'right';
-  hold: number;           // lama tampil (frame) sebelum keluar
-}> = ({ text, color = C.text, size = 120, x = '50%', y = '50%', align = 'center', hold }) => {
+  hold: number;              // lama tampil (frame) sebelum keluar
+}> = ({ text, colors = [], px = 10, x = 960, y = 540, align = 'center', hold }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const words = text.split(' ');
   const out = interpolate(frame, [hold, hold + 10], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   const tx = align === 'center' ? '-50%' : align === 'right' ? '-100%' : '0';
+  const items = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
+  let n = 0;   // urutan kata global, untuk jeda masuk
   return (
-    <div
-      style={{
-        position: 'absolute', left: x, top: y, transform: `translate(${tx}, -50%)`,
-        fontFamily: PIXEL_FONT, fontSize: size, lineHeight: 1, color, opacity: out,
-        whiteSpace: 'nowrap', textShadow: `0 ${size / 16}px 0 rgba(0,0,0,.55)`, letterSpacing: size * 0.04,
-      }}
-    >
-      {words.map((w, i) => {
-        const p = spring({ frame: frame - i * 5, fps, config: { damping: 12, stiffness: 220, mass: 0.6 } });
-        return (
-          <span key={i} style={{ display: 'inline-block', marginRight: size * 0.3,
-            transform: `scale(${interpolate(p, [0, 1], [2.2, 1])})`, opacity: Math.min(1, p * 3) }}>
-            {w}
-          </span>
-        );
-      })}
+    <div style={{ position: 'absolute', left: x, top: y, transform: `translate(${tx}, -50%)`, opacity: out,
+      display: 'flex', flexDirection: 'column', alignItems: items, gap: px * 3 }}>
+      {text.split('\n').map((line, li) => (
+        <div key={li} style={{ display: 'flex', gap: px * 6 }}>
+          {line.split(' ').map((w, i) => {
+            const p = spring({ frame: frame - n++ * 5, fps, config: { damping: 12, stiffness: 220, mass: 0.6 } });
+            return (
+              <GameText key={i} text={w} px={px} color={colors[li] || C.text}
+                style={{ transform: `scale(${interpolate(p, [0, 1], [2.2, 1])})`, opacity: Math.min(1, p * 3) }} />
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 };
 
-/** Logo SANDTILT: tiap huruf jatuh seperti piece lalu memantul, warna mengikuti logo game. */
-export const Logo: React.FC<{ size?: number }> = ({ size = 220 }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  return (
-    <div style={{ display: 'flex', fontFamily: PIXEL_FONT, fontSize: size, lineHeight: 1 }}>
-      {'SANDTILT'.split('').map((ch, i) => {
-        const p = spring({ frame: frame - i * 4, fps, config: { damping: 9, stiffness: 160 } });
-        return (
-          <span key={i} style={{ color: LOGO_COLORS[i], display: 'inline-block',
-            transform: `translateY(${interpolate(p, [0, 1], [-700, 0])}px)`,
-            textShadow: `0 ${size / 14}px 0 rgba(0,0,0,.5)` }}>
-            {ch}
-          </span>
-        );
-      })}
-    </div>
-  );
-};
-
-/** Kilat putih singkat (pemanis potongan / ledakan). */
+/** Kilat putih singkat (seperti kilat clear di game). */
 export const Flash: React.FC<{ len?: number }> = ({ len = 8 }) => {
   const frame = useCurrentFrame();
   const o = interpolate(frame, [0, len], [0.85, 0], { extrapolateRight: 'clamp', easing: Easing.out(Easing.quad) });

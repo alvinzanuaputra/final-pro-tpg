@@ -26,7 +26,7 @@ Target: trailer gaya **Steam / showcase** (halaman toko, itch.io, presentasi kel
 | 38–46 | Montase cepat event: angin, gempa, miring paksa, level-up (cut tiap 1 ketukan) | **CHAOS EVERY LEVEL** | `wind`, `jingle-level` |
 | 46–52 | Trofi muncul, leaderboard online, tombol sentuh di HP | **ACHIEVEMENTS · GLOBAL LEADERBOARD · PLAY ANYWHERE** | `trophy-gold` |
 | 52–56 | Momen paling dramatis (garis bahaya + heartbeat → clear besar menyelamatkan) | — | `heartbeat` → hening → `explode` |
-| 56–60 | Logo SANDTILT (animasi pasir membentuk huruf) + CTA + kredit kecil (Azhar & Alvin) | **PLAY FREE IN YOUR BROWSER** | musik ditutup |
+| 56–60 | Logo SANDTILT persis layar judul game (hujan pasir, huruf blok) + CTA + kredit kecil (Azhar & Alvin) | **PLAY FREE IN YOUR BROWSER** | musik ditutup |
 
 Cutdown 15 dtk (9:16): shot 0–3, 8–15, 22–30 (dipendekkan), 30–38, logo.
 
@@ -45,7 +45,7 @@ game (seed + advanceTime)  ──Playwright──▶  frame PNG per shot (1:1 de
 
 1. **Rekam footage** — skrip Playwright (`trailer/capture/`) membuka game dengan `?seed=N`, memainkan input yang sudah ditulis (skrip "demo replay"), memanggil `advanceTime(1000/60)` per frame dan menyimpan canvas. Hasil: gameplay sempurna 60 fps tanpa lag perekam, dan bisa direkam ulang kapan saja.
    - Perlu seed + urutan input yang menghasilkan momen bagus (chain ×4, ledakan mesiu). Bisa juga dibantu "mode trailer" kecil di game (`?trailer=1`): sembunyikan HUD tertentu, papan diisi skenario siap pakai.
-2. **Komposisi** — proyek Remotion di `trailer/` (terpisah dari game; dimasukkan ke `.vercelignore`, tidak ikut zip gameedukasi). Font pixel `kenney-pixel.ttf` dipakai untuk teks agar senada.
+2. **Komposisi** — proyek Remotion di `trailer/` (terpisah dari game; dimasukkan ke `.vercelignore`, tidak ikut zip gameedukasi). Logo, warna, dan huruf diambil langsung dari kode game, lihat [BRAND.md](BRAND.md).
 3. **Finishing** — ffmpeg-skill: normalisasi -14 LUFS, cek spesifikasi YouTube, buat versi vertikal 15 dtk dan GIF/WebM pendek untuk deskripsi Steam.
 
 ## 4. Skill & agent yang dipakai

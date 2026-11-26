@@ -1,8 +1,9 @@
 import React from 'react';
 import { AbsoluteFill, Audio, Easing, interpolate, Sequence, staticFile, useCurrentFrame } from 'remotion';
-import { Backdrop, BOARD, Flash, Footage, Logo, SlamText, SRC_H, SRC_W } from './components';
+import { Backdrop, BOARD, Flash, Footage, GameText, SlamText, SRC_H, SRC_W } from './components';
+import { GameLogo, SandRain } from './gameLogo';
 import { landings, SHOT } from './footage';
-import { C, PIXEL_FONT, sec } from './theme';
+import { C, sec } from './theme';
 
 // Draft 1 (uji pipeline): shot "crumble" + penutup logo.
 // Shot lain dari storyboard docs/TRAILER-plan.md ditambahkan setelah direkam.
@@ -26,19 +27,18 @@ const crumbleCam = (f: number) => {
   };
 };
 
+// Penutup = layar judul game: hujan pasir + logo, lalu ajakan main (font & warna game).
 const Outro: React.FC = () => {
   const frame = useCurrentFrame();
   const sub = interpolate(frame, [sec(0.9), sec(1.3)], [0, 1], ease);
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <Logo size={230} />
-      <div style={{ fontFamily: PIXEL_FONT, color: C.text, fontSize: 64, marginTop: 40, opacity: sub,
-        transform: `translateY(${(1 - sub) * 20}px)` }}>
-        PLAY FREE IN YOUR BROWSER
-      </div>
-      <div style={{ fontFamily: PIXEL_FONT, color: C.yellow, fontSize: 48, marginTop: 18, opacity: sub }}>
-        sandtilt.vercel.app
-      </div>
+    <AbsoluteFill>
+      <SandRain unit={8} />
+      <GameLogo unit={8} y={330} />
+      <AbsoluteFill style={{ alignItems: 'center', top: 560, opacity: sub, transform: `translateY(${(1 - sub) * 20}px)` }}>
+        <GameText text="PLAY FREE IN YOUR BROWSER" px={7} color={C.text} />
+        <GameText text="SANDTILT.VERCEL.APP" px={6} color={C.accent} style={{ marginTop: 30 }} />
+      </AbsoluteFill>
     </AbsoluteFill>
   );
 };
@@ -61,7 +61,7 @@ export const Trailer: React.FC = () => {
           </Sequence>
         ))}
         <Sequence from={sec(3.6)} durationInFrames={CRUMBLE_LEN - sec(3.6)}>
-          <SlamText text="TETRIS THAT CRUMBLES" x={70} y={540} size={84} align="left" hold={sec(2.1)} />
+          <SlamText text={'TETRIS THAT\nCRUMBLES'} colors={[C.text, C.accent]} x={90} y={540} px={10} align="left" hold={sec(2.1)} />
         </Sequence>
       </Sequence>
 

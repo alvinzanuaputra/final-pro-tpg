@@ -347,6 +347,7 @@ function activate(id) {
       break;
     case 'ach': ui.ach = ach.list(); setScreen('ach'); break;
     case 'theme': toggleTheme(); break;
+    case 'name': askName(() => renderer.showToast('NAMA DISIMPAN', lb.name)); break;   // ganti nama (pengaturan)
     case 'sound': toggleMute(); break;
     case 'settings': setScreen('settings'); break;
     case 'credits': openCredits(); break;
@@ -430,7 +431,7 @@ function titleItems() { return MENUS.title; }
 // Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
   if (screen === 'pause') return tutorial.active ? ['resume', 'skipTut', 'menu'] : ['resume', 'restart', 'sound', 'theme', 'menu'];
-  if (screen === 'settings') return ['sound', 'theme', 'back'];
+  if (screen === 'settings') return ['sound', 'theme', 'name', 'back'];
   return MENUS[screen];
 }
 function toggleTheme() {
@@ -663,7 +664,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 let last = performance.now(), acc = 0, heart = 0, dangerOn = false;
 
 function tick() {
-  game.update(STEP, input.poll(STEP));
+  const inp = input.poll(STEP);
+  // Selama kedip clear tombol diabaikan; geser-otomatis (tombol ← → ditahan) mulai ulang dari jeda
+  // awal, jadi piece tidak langsung meluncur begitu kedip selesai.
+  if (game.clearing) input.restartRepeat();
+  game.update(STEP, inp);
   tutorial.update(STEP);
 }
 

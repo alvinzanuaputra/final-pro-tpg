@@ -49,8 +49,12 @@ export const CFG = {
   DANGER_GRACE: 1.5,
   NEAR_MISS: BLOCK,                // prestasi NYARIS: clear saat pasir sampai ≤ 1 blok di bawah garis bahaya (atau lewat)
 
-  CLEAR_FLASH: 0.3,                // durasi kedip + hitstop saat clear
-  CLEAR_FLASH_PER_CHAIN: 0.04,
+  // Kedip + hitstop saat clear (lihat clearFlash di bawah). Selama kedip, tombol diabaikan.
+  CLEAR_FLASH: 0.3,                // chain 1
+  CLEAR_FLASH_PER_CHAIN: 0.04,     // tambahan per langkah chain...
+  CLEAR_FLASH_MAX: 0.5,            // ...sampai batas ini (tercapai di chain 6)
+  CLEAR_FLASH_FAST_CHAIN: 15,      // mulai chain ini kedip dipersingkat supaya chain panjang tidak tersendat
+  CLEAR_FLASH_FAST: 0.2,
   MAX_CHAIN_MULT: 8,
 
   DAS: 0.15,
@@ -70,6 +74,13 @@ const EVENT_GAPS = [[45, 75], [45, 75], [45, 70], [40, 65], [20, 30], [60, 90], 
 
 export const isBossLevel = (level) => level % 5 === 0;
 export const isTroughLevel = (level) => level > 1 && level % 5 === 1;
+
+// Lama kedip (detik) untuk langkah chain ke-n: naik pelan sampai batas, lalu dipersingkat di chain panjang.
+// Contoh: chain 1 = 0,30 · chain 6+ = 0,50 · chain 15+ = 0,20.
+export function clearFlash(chain) {
+  if (chain >= CFG.CLEAR_FLASH_FAST_CHAIN) return CFG.CLEAR_FLASH_FAST;
+  return Math.min(CFG.CLEAR_FLASH_MAX, CFG.CLEAR_FLASH + CFG.CLEAR_FLASH_PER_CHAIN * (chain - 1));
+}
 
 export function colorsForLevel(level) {
   if (level >= 12) return 5;

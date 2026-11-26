@@ -1,4 +1,4 @@
-import { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig } from './config.js';
+import { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig, clearFlash } from './config.js';
 import { makeRng } from './util.js';
 import { Sand } from './sim.js';
 import { SHAPES, Bag } from './pieces.js';
@@ -38,7 +38,6 @@ export class Game {
     this.tilt = { meter: 1, dir: 0, active: false, used: 0, cool: 0 };
     this.prevWant = 0;
     this.lastTiltAt = -99;
-    this.buffer = [];               // aksi yang ditekan saat hitstop, diproses setelahnya
 
     this.event = null;              // { type: 'quake'|'wind'|'force', dir, phase: 'warn'|'active', t }
     this.eventTimer = this.randRange(CFG.EVENT_FIRST);
@@ -295,7 +294,7 @@ export class Game {
     this.grainsCleared += grains;
     this.clears += res.bridges;
 
-    const dur = CFG.CLEAR_FLASH + CFG.CLEAR_FLASH_PER_CHAIN * (this.chain - 1);
+    const dur = clearFlash(this.chain);
     this.clearing = { cells: res.cells, t: dur, t0: dur };
     this.events.emit('clear', {
       points, grains, chain: this.chain, bridges: res.bridges, colors: res.colors,
@@ -356,18 +355,16 @@ export class Game {
 
     if (this.breather > 0) this.breather -= dt;
 
-    // Hitstop: selama kedip clear, piece & pasir berhenti.
-    // Tombol yang ditekan disimpan dulu supaya tidak hilang.
+    // Hitstop: selama kedip clear, piece & pasir berhenti dan tombol DIABAIKAN (tidak ditumpuk),
+    // supaya setelah kedip piece tidak meloncat karena tekanan yang menumpuk. Tombol yang ditahan
+    // (turun pelan, miring) dibaca lagi dari keadaannya setelah kedip selesai.
     if (this.clearing) {
-      if (input.actions.length) this.buffer.push(...input.actions);
-      if (this.buffer.length > 8) this.buffer.splice(0, this.buffer.length - 8);
       this.clearing.t -= dt;
       if (this.clearing.t <= 0) this.finishClear();
       return;
     }
 
     let actions = input.actions;
-    if (this.buffer.length) { actions = this.buffer.concat(actions); this.buffer = []; }
     if (!this.rules.controls) { actions = []; input = { actions, soft: false, tilt: 0 }; }
 
     this.updateTilt(dt, input.tilt || 0);

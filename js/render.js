@@ -761,6 +761,7 @@ export class Renderer {
       case 'restart': return 'ULANG';
       case 'menu': return 'MENU UTAMA';
       case 'back': return 'KEMBALI';
+      case 'name': return ui.playerName ? `NAMA: ${ui.playerName}` : 'ISI NAMA';
       case 'sound': return `SUARA: ${SOUND[ui.soundMode] || 'SEMUA'}`;
       case 'theme': return `TEMA: ${ui.themeName || 'KLASIK'}`;
       default: return id.toUpperCase();
@@ -953,7 +954,6 @@ export class Renderer {
     const items = (ui.menuItems || ['sound', 'back']).map((id) => [id, this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 60, 96, 15);
     if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 130, this.pal.dim, 1, 'center');
-    if (!ui.touch) this.txt('M = SUARA   P = JEDA SAAT MAIN', LW / 2, 140, this.pal.dim, 1, 'center');
   }
 
   drawOver(ctx, ui) {

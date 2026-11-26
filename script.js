@@ -58,8 +58,12 @@ const CFG = {
   DANGER_GRACE: 1.5,
   NEAR_MISS: BLOCK,                // prestasi NYARIS: clear saat pasir sampai ≤ 1 blok di bawah garis bahaya (atau lewat)
 
-  CLEAR_FLASH: 0.3,                // durasi kedip + hitstop saat clear
-  CLEAR_FLASH_PER_CHAIN: 0.04,
+  // Kedip + hitstop saat clear (lihat clearFlash di bawah). Selama kedip, tombol diabaikan.
+  CLEAR_FLASH: 0.3,                // chain 1
+  CLEAR_FLASH_PER_CHAIN: 0.04,     // tambahan per langkah chain...
+  CLEAR_FLASH_MAX: 0.5,            // ...sampai batas ini (tercapai di chain 6)
+  CLEAR_FLASH_FAST_CHAIN: 15,      // mulai chain ini kedip dipersingkat supaya chain panjang tidak tersendat
+  CLEAR_FLASH_FAST: 0.2,
   MAX_CHAIN_MULT: 8,
 
   DAS: 0.15,
@@ -79,6 +83,13 @@ const EVENT_GAPS = [[45, 75], [45, 75], [45, 70], [40, 65], [20, 30], [60, 90], 
 
 const isBossLevel = (level) => level % 5 === 0;
 const isTroughLevel = (level) => level > 1 && level % 5 === 1;
+
+// Lama kedip (detik) untuk langkah chain ke-n: naik pelan sampai batas, lalu dipersingkat di chain panjang.
+// Contoh: chain 1 = 0,30 · chain 6+ = 0,50 · chain 15+ = 0,20.
+function clearFlash(chain) {
+  if (chain >= CFG.CLEAR_FLASH_FAST_CHAIN) return CFG.CLEAR_FLASH_FAST;
+  return Math.min(CFG.CLEAR_FLASH_MAX, CFG.CLEAR_FLASH + CFG.CLEAR_FLASH_PER_CHAIN * (chain - 1));
+}
 
 function colorsForLevel(level) {
   if (level >= 12) return 5;
@@ -123,7 +134,7 @@ function levelConfig(level) {
 
 const STORAGE_PREFIX = 'sandtilt.';
 
-return { BLOCK, COLS, ROWS, W, H, MAT_SAND, MAT_STONE, MAT_GUN, CFG, isBossLevel, isTroughLevel, colorsForLevel, levelConfig, STORAGE_PREFIX };
+return { BLOCK, COLS, ROWS, W, H, MAT_SAND, MAT_STONE, MAT_GUN, CFG, isBossLevel, isTroughLevel, clearFlash, colorsForLevel, levelConfig, STORAGE_PREFIX };
 })();
 
 // ===================================================================== js/util.js
@@ -532,7 +543,7 @@ return { TYPES, SHAPES, Bag };
 
 // ===================================================================== js/game.js
 __mod["game"] = (function () {
-const { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig } = __mod["config"];
+const { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig, clearFlash } = __mod["config"];
 const { makeRng } = __mod["util"];
 const { Sand } = __mod["sim"];
 const { SHAPES, Bag } = __mod["pieces"];
@@ -572,7 +583,6 @@ class Game {
     this.tilt = { meter: 1, dir: 0, active: false, used: 0, cool: 0 };
     this.prevWant = 0;
     this.lastTiltAt = -99;
-    this.buffer = [];               // aksi yang ditekan saat hitstop, diproses setelahnya
 
     this.event = null;              // { type: 'quake'|'wind'|'force', dir, phase: 'warn'|'active', t }
     this.eventTimer = this.randRange(CFG.EVENT_FIRST);
@@ -829,7 +839,7 @@ class Game {
     this.grainsCleared += grains;
     this.clears += res.bridges;
 
-    const dur = CFG.CLEAR_FLASH + CFG.CLEAR_FLASH_PER_CHAIN * (this.chain - 1);
+    const dur = clearFlash(this.chain);
     this.clearing = { cells: res.cells, t: dur, t0: dur };
     this.events.emit('clear', {
       points, grains, chain: this.chain, bridges: res.bridges, colors: res.colors,
@@ -890,18 +900,16 @@ class Game {
 
     if (this.breather > 0) this.breather -= dt;
 
-    // Hitstop: selama kedip clear, piece & pasir berhenti.
-    // Tombol yang ditekan disimpan dulu supaya tidak hilang.
+    // Hitstop: selama kedip clear, piece & pasir berhenti dan tombol DIABAIKAN (tidak ditumpuk),
+    // supaya setelah kedip piece tidak meloncat karena tekanan yang menumpuk. Tombol yang ditahan
+    // (turun pelan, miring) dibaca lagi dari keadaannya setelah kedip selesai.
     if (this.clearing) {
-      if (input.actions.length) this.buffer.push(...input.actions);
-      if (this.buffer.length > 8) this.buffer.splice(0, this.buffer.length - 8);
       this.clearing.t -= dt;
       if (this.clearing.t <= 0) this.finishClear();
       return;
     }
 
     let actions = input.actions;
-    if (this.buffer.length) { actions = this.buffer.concat(actions); this.buffer = []; }
     if (!this.rules.controls) { actions = []; input = { actions, soft: false, tilt: 0 }; }
 
     this.updateTilt(dt, input.tilt || 0);
@@ -1836,6 +1844,7 @@ class Renderer {
       case 'restart': return 'ULANG';
       case 'menu': return 'MENU UTAMA';
       case 'back': return 'KEMBALI';
+      case 'name': return ui.playerName ? `NAMA: ${ui.playerName}` : 'ISI NAMA';
       case 'sound': return `SUARA: ${SOUND[ui.soundMode] || 'SEMUA'}`;
       case 'theme': return `TEMA: ${ui.themeName || 'KLASIK'}`;
       default: return id.toUpperCase();
@@ -2028,7 +2037,6 @@ class Renderer {
     const items = (ui.menuItems || ['sound', 'back']).map((id) => [id, this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 60, 96, 15);
     if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 130, this.pal.dim, 1, 'center');
-    if (!ui.touch) this.txt('M = SUARA   P = JEDA SAAT MAIN', LW / 2, 140, this.pal.dim, 1, 'center');
   }
 
   drawOver(ctx, ui) {
@@ -2264,6 +2272,9 @@ class Input {
   }
 
   clear() { this.queue = []; }
+
+  // Geser-otomatis mulai lagi dari jeda awal (DAS), seperti tombol baru ditekan.
+  restartRepeat() { for (const a of REPEAT) this.repeat[a] = -CFG.DAS; }
 }
 
 return { Input };
@@ -3505,6 +3516,7 @@ function activate(id) {
       break;
     case 'ach': ui.ach = ach.list(); setScreen('ach'); break;
     case 'theme': toggleTheme(); break;
+    case 'name': askName(() => renderer.showToast('NAMA DISIMPAN', lb.name)); break;   // ganti nama (pengaturan)
     case 'sound': toggleMute(); break;
     case 'settings': setScreen('settings'); break;
     case 'credits': openCredits(); break;
@@ -3588,7 +3600,7 @@ function titleItems() { return MENUS.title; }
 // Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
   if (screen === 'pause') return tutorial.active ? ['resume', 'skipTut', 'menu'] : ['resume', 'restart', 'sound', 'theme', 'menu'];
-  if (screen === 'settings') return ['sound', 'theme', 'back'];
+  if (screen === 'settings') return ['sound', 'theme', 'name', 'back'];
   return MENUS[screen];
 }
 function toggleTheme() {
@@ -3821,7 +3833,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 let last = performance.now(), acc = 0, heart = 0, dangerOn = false;
 
 function tick() {
-  game.update(STEP, input.poll(STEP));
+  const inp = input.poll(STEP);
+  // Selama kedip clear tombol diabaikan; geser-otomatis (tombol ← → ditahan) mulai ulang dari jeda
+  // awal, jadi piece tidak langsung meluncur begitu kedip selesai.
+  if (game.clearing) input.restartRepeat();
+  game.update(STEP, inp);
   tutorial.update(STEP);
 }
 

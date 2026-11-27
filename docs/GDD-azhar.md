@@ -74,7 +74,9 @@ Setiap piece punya **warna** (3–5 warna aktif) **dan material**. Material khus
 - Prestasi baru: **BOOM!** (ledakan pertama) dan **PENGHANCUR BATU** (batu hancur oleh ledakan).
 
 ### 3.6 Event Pengganggu
-- Event pertama muncul 35–50 detik setelah mulai. Jeda berikutnya mengikuti tabel per level di 4.2: sangat rapat di **level boss**, longgar di **level lembah**.
+- Event **pasti muncul** (diatur timer, bukan peluang). Event pertama 35–50 detik setelah mulai; jeda berikutnya = rata-rata level itu ±20% (tabel 4.2). Jeda level normal **tidak pernah bertambah lama**: makin tinggi level, makin sering.
+- **Level boss** (5, 10, 15, …): event **pasti** muncul 3 detik setelah masuk level (`BOSS_EVENT_DELAY`), jenisnya bergiliran gempa → papan miring → angin (L5 gempa, L10 papan miring, L15 angin, L20 gempa, …).
+- **Kantong jenis event** (mirip 7-bag Tetris): setiap 3 event berisi 1 gempa, 1 angin, 1 papan miring dengan urutan acak, jadi tidak ada jenis yang lama tidak muncul.
 - Selalu ada **peringatan 3 detik** (banner + bunyi bip) sebelum event aktif.
 
 | Event | Durasi | Efek | Cara menanggapi |
@@ -128,35 +130,36 @@ M_multi = 1 + 0,5 × (jumlah jembatan bersamaan − 1)
 
 ### 4.2 Level & Kesulitan
 - Naik level setiap **5 clear** (bukan skor), mirip Tetris modern yang naik tiap 10 baris. Dua jembatan sekaligus = 2 clear.
-- Kurvanya **bergerigi**, bukan naik terus: setiap **level ke-5 adalah level boss** (event jauh lebih sering, kecepatan tidak ikut naik), dan level sesudahnya adalah **lembah** (kecepatan turun sedikit, event jarang) supaya pemain sempat bernapas.
+- Kurvanya **bergerigi**, bukan naik terus: setiap **level ke-5 adalah level boss** (event jauh lebih sering, kecepatan tidak ikut naik), dan level sesudahnya adalah **lembah** (kecepatan turun sedikit, jeda event kembali ke level normal sebelum boss) supaya pemain sempat bernapas tanpa event jadi lebih jarang dari sebelumnya.
 - Di level boss, angka LEVEL di panel samping berwarna khusus (warna `boss` di tiap tema; kontras ≥ 5:1 dengan latar dan berbeda dari warna teks & aksen). Tidak ada banner.
 - Kecepatan berhenti di **0,10 detik/baris** (level 40). Setelah itu kesulitan tetap naik pelan lewat event yang makin rapat dan batu yang makin sering.
 - Peluang batu & mesiu di tabel adalah peluang **nyata** per piece (kode sudah mengoreksi aturan "tidak dua material khusus berturut-turut").
 
-| Level | Tipe | Jatuh (dtk/baris) | Warna | Batu | Mesiu | Jeda event (dtk) |
+| Level | Tipe | Jatuh (dtk/baris) | Warna | Batu | Mesiu | Jeda event rata-rata (dtk, ±20%) |
 |---|---|---|---|---|---|---|
-| 1 | normal | 0,80 | 3 | – | – | 35–50 (pertama) |
-| 2 | normal | 0,72 | 3 | – | 8% | 45–75 |
-| 3 | normal | 0,65 | 3 | – | 8% | 45–70 |
-| 4 | normal | 0,58 | **4** | – | 8% | 40–65 |
-| 5 | **boss** | 0,58 | 4 | – | 8% | **20–30** |
-| 6 | lembah | 0,55 | 4 | – | 10% | 60–90 |
-| 7–9 | normal | 0,50 → 0,41 | 4 | **3%** | 10% | 40–60 |
-| 10 | **boss** | 0,41 | 4 | 3% | 10% | **18–25** |
-| 11 | lembah | 0,38 | 4 | 3% | 12% | 60–90 |
-| 12–14 | normal | 0,35 → 0,29 | **5** | 4% | 12% | 35–50 |
-| 15 | **boss** | 0,29 | 5 | 4% | 12% | **15–22** |
-| 16 | lembah | 0,27 | 5 | 4% | 14% | 60–90 |
-| 17–19 | normal | 0,25 → 0,21 | 5 | 4% | 14% | 30–45 |
-| 20 | **boss** | 0,21 | 5 | 4% | 14% | **12–18** |
-| 21–25 | pola sama | 0,20 → 0,17 | 5 | 5% | 14% | normal 28–40, boss 10–16, lembah 60–90 |
-| 26–30 | pola sama | 0,16 → **0,12** (turun 0,01/level) | 5 | 5% | 14% | tiap 5 level makin rapat (lihat baris bawah) |
-| 31–34 | pola sama | 0,12 | 5 | 6% | 14% | 〃 |
-| 35–39 | pola sama | **0,11** | 5 | 6% | 14% | 〃 |
-| 40+ | pola sama | **0,10** (minimum) | 5 | +1% tiap 10 level (L41 7% … **L71+ 10%**) | 14% | tiap 5 level makin rapat: normal min 16–28, boss min 6–12, lembah min 35–65 |
+| 1 | normal | 0,80 | 3 | – | – | 50 (event pertama 35–50) |
+| 2 | normal | 0,72 | 3 | – | 8% | 48,5 |
+| 3 | normal | 0,65 | 3 | – | 8% | 47 |
+| 4 | normal | 0,58 | **4** | – | 8% | 45,5 |
+| 5 | **boss** | 0,58 | 4 | – | 8% | **22** + event pasti (gempa) |
+| 6 | lembah | 0,55 | 4 | – | 10% | 45,5 |
+| 7–9 | normal | 0,50 → 0,41 | 4 | **3%** | 10% | 41 → 38 |
+| 10 | **boss** | 0,41 | 4 | 3% | 10% | **18** + event pasti (papan miring) |
+| 11 | lembah | 0,38 | 4 | 3% | 12% | 38 |
+| 12–14 | normal | 0,35 → 0,29 | **5** | 4% | 12% | 33,5 → 30,5 |
+| 15 | **boss** | 0,29 | 5 | 4% | 12% | **14,5** + event pasti (angin) |
+| 16 | lembah | 0,27 | 5 | 4% | 14% | 30,5 |
+| 17–19 | normal | 0,25 → 0,21 | 5 | 4% | 14% | 26 → 23 |
+| 20 | **boss** | 0,21 | 5 | 4% | 14% | **11** + event pasti (gempa) |
+| 21–25 | pola sama | 0,20 → 0,17 | 5 | 5% | 14% | normal 20 → 19, boss 9,5, lembah 23 |
+| 26–30 | pola sama | 0,16 → **0,12** (turun 0,01/level) | 5 | 5% | 14% | normal 18,75 → 18, boss 9, lembah 19 |
+| 31–34 | pola sama | 0,12 | 5 | 6% | 14% | normal 17,5 → 16,75, lembah 18 |
+| 35–39 | pola sama | **0,11** | 5 | 6% | 14% | normal 16,25 → 15, boss 9 |
+| 40+ | pola sama | **0,10** (minimum) | 5 | +1% tiap 10 level (L41 7% … **L71+ 10%**) | 14% | normal turun 0,25/level sampai **min 12** (L53), boss 9, lembah = normal 2 level sebelumnya |
 
 - **Ruang napas:** saat warna baru masuk (level 4 dan 12), kecepatan memakai angka level sebelumnya selama 30 detik.
-- Saat masuk level boss, hitung mundur event langsung dipendekkan; saat masuk lembah, langsung dipanjangkan.
+- Rumus jeda (`eventGap`): normal = 50 − 1,5 × (level − 1) sampai 20 dtk (L21), lalu −0,25/level sampai minimum 12 dtk. Boss = ½ normal (min 9) + event pasti. Lembah = normal level sebelum boss.
+- Saat masuk level boss, event pasti muncul 3 detik lagi; saat masuk lembah, hitung mundur langsung dilonggarkan ke jeda lembah.
 - **Mode uji** (tidak menyimpan skor/prestasi): `?jatuh=0.15` memaksa kecepatan, `?level=12` mulai di level tertentu.
 
 ### 4.3 Angka yang Bisa Di-tuning (semua di `config`)

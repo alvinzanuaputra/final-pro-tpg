@@ -284,6 +284,7 @@ function startGame() {
     game.clears = (TEST.level - 1) * CFG.CLEARS_PER_LEVEL;
     game.numColors = colorsForLevel(TEST.level);
     game.eventTimer = Math.min(game.eventTimer, game.randRange(levelConfig(TEST.level).eventGap));
+    if (levelConfig(TEST.level).boss) game.queueBossEvent(TEST.level);
   }
   if (TEST.on) renderer.showToast('MODE UJI', 'SKOR DAN PRESTASI TIDAK DISIMPAN');
   ach.sessionNew = 0;

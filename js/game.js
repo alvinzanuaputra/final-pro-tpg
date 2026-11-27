@@ -1,4 +1,4 @@
-import { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig, clearFlash } from './config.js';
+import { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig, clearFlash, bossEventType } from './config.js';
 import { makeRng } from './util.js';
 import { Sand } from './sim.js';
 import { SHAPES, Bag } from './pieces.js';
@@ -42,6 +42,8 @@ export class Game {
     this.event = null;              // { type: 'quake'|'wind'|'force', dir, phase: 'warn'|'active', t }
     this.eventTimer = this.randRange(CFG.EVENT_FIRST);
     this.eventsSurvived = 0;
+    this.eventBag = [];             // kantong jenis event: tiap 3 event pasti berisi gempa, angin, papan miring
+    this.bossEvent = null;          // jenis event yang pasti muncul karena baru masuk level boss
 
     this.danger = 0;
     this.overflow = [];             // butir piece yang terkunci di atas papan, menunggu dituang masuk
@@ -227,9 +229,8 @@ export class Game {
     if (!this.event) {
       this.eventTimer -= dt;
       if (this.eventTimer > 0) return;
-      const types = ['quake', 'wind', 'force'];
-      const type = types[Math.floor(this.rng() * types.length)];
-      this.event = { type, dir: this.rng() < 0.5 ? -1 : 1, phase: 'warn', t: CFG.EVENT_WARN, push: 0 };
+      const type = this.nextEventType();
+      this.event ={ type, dir: this.rng() < 0.5 ? -1 : 1, phase: 'warn', t: CFG.EVENT_WARN, push: 0 };
       this.events.emit('eventWarn', this.event);
       return;
     }
@@ -256,8 +257,37 @@ export class Game {
       this.eventsSurvived++;
       this.events.emit('eventEnd', { ...e, survived: this.eventsSurvived });
       this.event = null;
-      this.eventTimer = this.randRange(levelConfig(this.level).eventGap);
+      const gap = this.randRange(levelConfig(this.level).eventGap);
+      // Event boss yang tertunda (level boss tercapai saat event lain berjalan) menyusul cepat.
+      this.eventTimer = this.bossEvent ? Math.min(gap, CFG.BOSS_EVENT_DELAY) : gap;
     }
+  }
+
+  // Jenis event berikutnya. Event boss memakai jenis gilirannya dan diambil dari kantong
+  // kalau masih ada di sana, supaya jaminan "tiap 3 event ada semua jenis" tetap terjaga.
+  nextEventType() {
+    if (this.eventBag.length === 0) {
+      const bag = ['quake', 'wind', 'force'];
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(this.rng() * (i + 1));
+        [bag[i], bag[j]] = [bag[j], bag[i]];
+      }
+      this.eventBag = bag;
+    }
+    if (this.bossEvent) {
+      const type = this.bossEvent;
+      this.bossEvent = null;
+      const i = this.eventBag.indexOf(type);
+      if (i >= 0) this.eventBag.splice(i, 1);
+      return type;
+    }
+    return this.eventBag.pop();
+  }
+
+  // Masuk level boss: event jenis gilirannya pasti muncul BOSS_EVENT_DELAY detik lagi.
+  queueBossEvent(level) {
+    this.bossEvent = bossEventType(level);
+    if (!this.event) this.eventTimer = CFG.BOSS_EVENT_DELAY;
   }
 
   // Piece hancur jadi pasir.
@@ -336,13 +366,10 @@ export class Game {
       this.level = newLevel;
       const lc = levelConfig(newLevel);
       if (lc.colors > this.numColors) { this.numColors = lc.colors; this.breather = CFG.BREATHER; }
-      // Hitung mundur event ikut jeda level baru: level boss langsung lebih rapat,
-      // level lembah langsung lebih longgar (event yang sedang berjalan tidak diganggu).
-      if (!this.event) {
-        const next = this.randRange(lc.eventGap);
-        if (lc.boss) this.eventTimer = Math.min(this.eventTimer, next);
-        else if (lc.trough) this.eventTimer = Math.max(this.eventTimer, next);
-      }
+      // Level boss: event pasti muncul sebentar lagi. Level lembah: hitung mundur langsung
+      // dilonggarkan ke jeda lembah (event yang sedang berjalan tidak diganggu).
+      if (lc.boss && this.rules.events) this.queueBossEvent(newLevel);
+      else if (lc.trough && !this.event) this.eventTimer = Math.max(this.eventTimer, this.randRange(lc.eventGap));
       this.events.emit('levelUp', { level: this.level, colors: this.numColors, boss: lc.boss, tiltsUsed: this.tilt.used });
     }
   }

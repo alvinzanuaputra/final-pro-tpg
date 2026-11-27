@@ -35,9 +35,12 @@ export class Game {
     this.explosions = 0;
     this.lastSpecial = 0;
 
-    this.tilt = { meter: 1, dir: 0, active: false, used: 0, cool: 0 };
+    this.tilt = { meter: 1, dir: 0, active: false, used: 0, cool: 0, holdStart: 0, lastDir: 0, lastActiveAt: -99 };
     this.prevWant = 0;
     this.lastTiltAt = -99;
+    this.flipLog = [];              // waktu ganti arah miring terakhir (untuk kocok)
+    this.slosh = 0;                 // sisa detik kocok
+    this.pieceMask = new Uint8Array(W * H);
 
     this.event = null;              // { type: 'quake'|'wind'|'force', dir, phase: 'warn'|'active', t }
     this.eventTimer = this.randRange(CFG.EVENT_FIRST);
@@ -194,11 +197,18 @@ export class Game {
     const canRun = t.active ? t.meter > 0 : t.meter >= CFG.TILT_MIN_START;
     if (want !== 0 && canRun) {
       if (!t.active || t.dir !== want) {
+        // Ganti arah cepat (arah lama masih aktif sesaat yang lalu) → lempar pasir.
+        const flip = t.lastDir === -want && this.time - t.lastActiveAt <= CFG.FLIP_WINDOW + dt;
+        const hold = t.lastActiveAt - t.holdStart;
         t.active = true;
         t.dir = want;
         t.used++;
+        t.holdStart = this.time;
         this.events.emit('tiltStart', want);
+        if (flip) this.flipTilt(want, hold);
       }
+      t.lastDir = want;
+      t.lastActiveAt = this.time;
       t.meter = Math.max(0, t.meter - dt / CFG.TILT_CAPACITY);
       t.cool = CFG.TILT_REFILL_DELAY;
       this.lastTiltAt = this.time;
@@ -211,6 +221,41 @@ export class Game {
     if (want === 0) {
       if (t.cool > 0) t.cool -= dt;
       else t.meter = Math.min(1, t.meter + dt / CFG.TILT_REFILL);
+    }
+  }
+
+  // Lempar pasir saat ganti arah. Makin lama arah lama ditahan, makin kuat (seperti momentum).
+  // Ganti arah berulang dalam waktu singkat → kocok permukaan (lihat update).
+  flipTilt(dir, hold) {
+    const t = this.tilt;
+    t.meter = Math.max(0, t.meter - CFG.FLIP_COST);
+    const k = Math.min(1, Math.max(0, hold / CFG.FLIP_FULL_HOLD));
+    const strength = CFG.TOSS_BASE + (1 - CFG.TOSS_BASE) * k;
+    const count = Math.round(CFG.TOSS_MIN + (CFG.TOSS_MAX - CFG.TOSS_MIN) * k);
+    const grains = this.sand.toss(dir, strength, count,
+      { height: CFG.TOSS_HEIGHT, speed: CFG.TOSS_SPEED, gravity: CFG.TOSS_GRAVITY });
+    if (grains > 0) this.dirty = true;
+    this.events.emit('tiltFlip', { dir, strength, grains });
+
+    this.flipLog.push(this.time);
+    this.flipLog = this.flipLog.filter((tm) => this.time - tm <= CFG.SLOSH_WINDOW);
+    if (this.flipLog.length >= CFG.SLOSH_FLIPS) {
+      if (this.slosh <= 0) this.events.emit('slosh');
+      this.slosh = CFG.SLOSH_TIME;
+    }
+  }
+
+  // Sel yang ditempati piece aktif, untuk butir melayang (piece dianggap padat).
+  updatePieceMask() {
+    const mask = this.pieceMask;
+    mask.fill(0);
+    const p = this.piece;
+    if (!p) return;
+    for (const [bx, by] of this.blocksOf(p)) {
+      const cx = p.x + bx * BLOCK, cy = p.y + by * BLOCK;
+      for (let yy = Math.max(0, cy); yy < Math.min(H, cy + BLOCK); yy++) {
+        for (let xx = Math.max(0, cx); xx < Math.min(W, cx + BLOCK); xx++) mask[yy * W + xx] = 1;
+      }
     }
   }
 
@@ -466,13 +511,23 @@ export class Game {
       if (this.state !== 'play') return;
     }
 
-    // Simulasi pasir
+    // Simulasi pasir. Sel piece yang sedang jatuh dianggap dinding (lihat Sand.block).
+    this.updatePieceMask();
+    this.sand.block = this.piece ? this.pieceMask : null;
     const e = this.event;
     const quaking = e && e.phase === 'active' && e.type === 'quake';
     const jitter = quaking ? CFG.QUAKE_JITTER : 0;
     if (quaking && this.sand.quakeMix(CFG.QUAKE_SWAPS) > 0) this.dirty = true;
+    if (this.slosh > 0) {
+      this.slosh -= dt;
+      if (this.sand.surfaceMix(CFG.SLOSH_SWAPS, CFG.SLOSH_DEPTH) > 0) this.dirty = true;
+    }
     const moved = this.sand.step(this.effectiveTilt(), jitter);
     if (moved > 0) this.dirty = true;
+    if (this.sand.airborne.length) {
+      const mask = this.pieceMask;
+      if (this.sand.stepAirborne(dt, CFG.TOSS_GRAVITY, (i) => mask[i] === 1) > 0) this.dirty = true;
+    }
     this.pourOverflow();
 
     // Piece berikutnya menunggu tempat muncul kosong (pasir yang baru runtuh belum turun).

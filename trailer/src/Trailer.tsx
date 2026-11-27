@@ -11,11 +11,11 @@ import { COPY, Lang } from './copy';
 // Trailer SandTilt. Potongan jatuh di ketukan musik game (132 BPM -> 1 bar = 4 ketuk).
 // Storyboard: docs/TRAILER-plan.md. Brand: docs/BRAND.md (logo, warna, huruf dari kode game).
 // ----------------------------------------------------------------------------------------------------------------
-const BAR = (4 * 60 / 132) * FPS;                       // 109.09 frame
-const bars = (n: number) => Math.round(n * BAR);
+export const BAR = (4 * 60 / 132) * FPS;                // 109.09 frame
+export const bars = (n: number) => Math.round(n * BAR);
 
-type Side = 'right' | 'left';                            // posisi GAME di layar; teks di sisi sebaliknya
-type Beat =
+export type Side = 'right' | 'left';                            // posisi GAME di layar; teks di sisi sebaliknya
+export type Beat =
   | { kind: 'shot'; shot: string; from: number; bars: number; side: Side; textAt?: number;
       closeup?: boolean; counter?: boolean; trophy?: { at: number; tier: 'silver' }; heartbeatUntil?: number; flashIn?: boolean;
       accent?: string }   // warna baris kedua teks (default aksen kuning)
@@ -24,10 +24,10 @@ type Beat =
 
 // Tempo cepat: tiap adegan selesai +-1 detik setelah momen utamanya (clear/ledakan terakhir), lalu langsung pindah.
 // Panjang dibulatkan ke atas ke ketukan musik (1/4 bar) supaya potongan tetap di irama.
-const fit = (from: number, end: number) => Math.ceil((end - from) / (BAR / 4)) / 4;     // -> jumlah bar
-const AFTER = sec(1);
-const ev = (shot: string, name: string, filter?: (d: Record<string, unknown>) => boolean) => eventFrames(SHOT[shot], name, filter);
-const lastHit = (shot: string) => Math.max(...ev(shot, 'clear'), ...ev(shot, 'explode'));
+export const fit = (from: number, end: number) => Math.ceil((end - from) / (BAR / 4)) / 4;     // -> jumlah bar
+export const AFTER = sec(1);
+export const ev = (shot: string, name: string, filter?: (d: Record<string, unknown>) => boolean) => eventFrames(SHOT[shot], name, filter);
+export const lastHit = (shot: string) => Math.max(...ev(shot, 'clear'), ...ev(shot, 'explode'));
 
 const BEATS: Beat[] = [
   // intro: dua piece mendarat (close-up lalu mundur), berhenti sebelum clear pertama di rekaman
@@ -46,61 +46,79 @@ const BEATS: Beat[] = [
   { kind: 'outro', bars: 2.5 },
 ];
 
-// posisi mulai tiap beat
-const STARTS: number[] = [];
-let acc = 0;
-for (const b of BEATS) { STARTS.push(acc); acc += bars(b.bars); }
-export const TRAILER_FRAMES = acc;
-
 // ----------------------------------------------------------------------------------------------------------------
-// suara: SFX dari event rekaman + duck musik (seperti game)
+// Satu "cut" = daftar beat -> posisi mulai, durasi total, SFX (dari event rekaman) dan volume musik (duck seperti game).
+// Dipakai versi horizontal (Trailer) dan vertikal (Short).
 type Cue = { at: number; s: Sound };
-const CUES: Cue[] = [];
-const DUCKS: { at: number; d: Duck }[] = [];
-BEATS.forEach((b, i) => {
-  if (b.kind === 'card') {
-    const t = trophySound('gold');
-    t.sounds.forEach((s) => CUES.push({ at: STARTS[i] + 30, s }));
-    DUCKS.push({ at: STARTS[i] + 30, d: t.duck });
-    return;
-  }
-  if (b.kind !== 'shot') return;
-  const meta = SHOT[b.shot];
-  const len = bars(b.bars);
-  for (let f = b.from; f < Math.min(meta.frames, b.from + len); f++) {
-    for (const e of meta.log[f].ev) {
-      const { sounds, duck } = soundsFor(e);
-      const at = STARTS[i] + f - b.from;
-      sounds.forEach((s) => CUES.push({ at, s }));
-      if (duck) DUCKS.push({ at, d: duck });
-    }
-  }
-  if (b.trophy) {
-    const t = trophySound(b.trophy.tier);
-    t.sounds.forEach((s) => CUES.push({ at: STARTS[i] + b.trophy!.at - b.from, s }));
-    DUCKS.push({ at: STARTS[i] + b.trophy.at - b.from, d: t.duck });
-  }
-  if (b.heartbeatUntil) {
-    for (let f = 0; f < b.heartbeatUntil - b.from - 10; f += 45) heartbeat().forEach((s) => CUES.push({ at: STARTS[i] + f, s }));
-  }
-});
+export type Cut = { beats: Beat[]; starts: number[]; total: number; cues: Cue[]; musicVolume: (f: number) => number };
 
 const MUSIC = 0.5;
-function musicVolume(f: number) {
-  let v = 1;
-  for (const { at, d } of DUCKS) {
-    const end = at + sec(d.dur);
-    if (f < at - 2 || f > end + sec(0.25)) continue;
-    const k = f < at ? (at - f) / 2 : f <= end ? 0 : (f - end) / sec(0.25);   // 0 = turun penuh
-    v = Math.min(v, d.depth + (1 - d.depth) * Math.min(1, k));
-  }
-  const fade = interpolate(f, [0, 6, TRAILER_FRAMES - sec(2), TRAILER_FRAMES], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
-  return MUSIC * v * fade;
+export function buildCut(beats: Beat[]): Cut {
+  const starts: number[] = [];
+  let acc = 0;
+  for (const b of beats) { starts.push(acc); acc += bars(b.bars); }
+  const total = acc;
+  const cues: Cue[] = [];
+  const ducks: { at: number; d: Duck }[] = [];
+  beats.forEach((b, i) => {
+    if (b.kind === 'card') {
+      const t = trophySound('gold');
+      t.sounds.forEach((s) => cues.push({ at: starts[i] + 30, s }));
+      ducks.push({ at: starts[i] + 30, d: t.duck });
+      return;
+    }
+    if (b.kind !== 'shot') return;
+    const meta = SHOT[b.shot];
+    const len = bars(b.bars);
+    for (let f = b.from; f < Math.min(meta.frames, b.from + len); f++) {
+      for (const e of meta.log[f].ev) {
+        const { sounds, duck } = soundsFor(e);
+        const at = starts[i] + f - b.from;
+        sounds.forEach((s) => cues.push({ at, s }));
+        if (duck) ducks.push({ at, d: duck });
+      }
+    }
+    if (b.trophy && b.trophy.at >= b.from && b.trophy.at < b.from + len) {
+      const t = trophySound(b.trophy.tier);
+      t.sounds.forEach((s) => cues.push({ at: starts[i] + b.trophy!.at - b.from, s }));
+      ducks.push({ at: starts[i] + b.trophy.at - b.from, d: t.duck });
+    }
+    if (b.heartbeatUntil) {
+      for (let f = 0; f < b.heartbeatUntil - b.from - 10; f += 45) heartbeat().forEach((s) => cues.push({ at: starts[i] + f, s }));
+    }
+  });
+  const musicVolume = (f: number) => {
+    let v = 1;
+    for (const { at, d } of ducks) {
+      const end = at + sec(d.dur);
+      if (f < at - 2 || f > end + sec(0.25)) continue;
+      const k = f < at ? (at - f) / 2 : f <= end ? 0 : (f - end) / sec(0.25);   // 0 = turun penuh
+      v = Math.min(v, d.depth + (1 - d.depth) * Math.min(1, k));
+    }
+    const fade = interpolate(f, [0, 6, total - sec(2), total], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+    return MUSIC * v * fade;
+  };
+  return { beats, starts, total, cues, musicVolume };
 }
+
+/** Musik game + semua SFX dari sebuah cut. */
+export const CutAudio: React.FC<{ cut: Cut }> = ({ cut }) => (
+  <>
+    <Audio src={staticFile('game/music/game.mp3')} volume={cut.musicVolume} loop />
+    {cut.cues.map((c, i) => (
+      <Sequence key={`s${i}`} from={c.at + Math.round((c.s.delay || 0) * FPS)} durationInFrames={sec(3)} layout="none">
+        <Audio src={staticFile(`game/sfx/${c.s.file}.mp3`)} volume={c.s.vol} playbackRate={c.s.rate || 1} />
+      </Sequence>
+    ))}
+  </>
+);
+
+const CUT = buildCut(BEATS);
+export const TRAILER_FRAMES = CUT.total;
 
 // ----------------------------------------------------------------------------------------------------------------
 // kamera
-const ease = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
+export const ease = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
 const SHIFT = 270;   // geser game ke samping (koordinat rekaman) supaya ada ruang teks
 
 function camFor(b: Extract<Beat, { kind: 'shot' }>) {
@@ -131,15 +149,16 @@ const textX = (side: Side) => (side === 'right' ? 90 : 1240);
 const textPx = (text: string) => Math.min(10, Math.floor(640 / (Math.max(...text.split('\n').map((l) => l.length)) * 6)));
 
 /** Angka chain besar yang ikut naik setiap clear (x2, x3, x4). */
-const ChainCounter: React.FC<{ frames: number[]; x: number }> = ({ frames, x }) => {
+export const ChainCounter: React.FC<{ frames: number[]; x: number; top?: number; px?: number; origin?: string }> = ({
+  frames, x, top = 640, px = 22, origin = 'left center' }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const k = frames.filter((c) => c <= f).length;
   if (k < 2) return null;
   const p = spring({ frame: f - frames[k - 1], fps, config: { damping: 10, stiffness: 260 } });
   return (
-    <div style={{ position: 'absolute', left: x, top: 640, transform: `scale(${interpolate(p, [0, 1], [1.8, 1])})`, transformOrigin: 'left center' }}>
-      <GameText text={`X${k}`} px={22} color={C.accent} />
+    <div style={{ position: 'absolute', left: x, top, transform: `scale(${interpolate(p, [0, 1], [1.8, 1])})`, transformOrigin: origin }}>
+      <GameText text={`X${k}`} px={px} color={C.accent} />
     </div>
   );
 };
@@ -213,17 +232,12 @@ const Outro: React.FC<{ lang: Lang }> = ({ lang }) => {
 export const Trailer: React.FC<{ lang?: Lang }> = ({ lang = 'en' }) => (
   <AbsoluteFill>
     <Backdrop />
-    <Audio src={staticFile('game/music/game.mp3')} volume={musicVolume} loop />
+    <CutAudio cut={CUT} />
     {BEATS.map((b, i) => (
-      <Sequence key={i} from={STARTS[i]} durationInFrames={bars(b.bars)} name={b.kind === 'shot' ? b.shot : b.kind}>
+      <Sequence key={i} from={CUT.starts[i]} durationInFrames={bars(b.bars)} name={b.kind === 'shot' ? b.shot : b.kind}>
         {b.kind === 'shot' && <ShotBeat b={b} lang={lang} />}
         {b.kind === 'card' && <Card len={bars(b.bars)} lang={lang} />}
         {b.kind === 'outro' && (<><Flash /><Outro lang={lang} /></>)}
-      </Sequence>
-    ))}
-    {CUES.map((c, i) => (
-      <Sequence key={`s${i}`} from={c.at + Math.round((c.s.delay || 0) * FPS)} durationInFrames={sec(3)} layout="none">
-        <Audio src={staticFile(`game/sfx/${c.s.file}.mp3`)} volume={c.s.vol} playbackRate={c.s.rate || 1} />
       </Sequence>
     ))}
   </AbsoluteFill>

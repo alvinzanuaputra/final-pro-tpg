@@ -48,6 +48,8 @@ export const SHOTS = [
     // trofi "REAKSI BERANTAI" (chain x3) sengaja belum terbuka -> toast muncul di tengah chain
     storage: { ach: ['first_bridge', 'chain3', 'chain5', 'tilt_master', 'close_call', 'clean_board', 'boom', 'stone_breaker', 'no_tilt', 'marathon', 'quake', 'counter'].filter((a) => a !== 'chain3') },
   },
+  // sama persis dengan 'chain' tapi semua trofi sudah terbuka (tanpa toast), untuk versi vertikal yang hanya menampilkan papan
+  { name: 'chain-quiet', plan: 'chain-s202', seed: 11, warmup: 20, steerFrom: 20, fireMin: 62, fireAt: 140, frames: 300, score: 12450 },
   { name: 'gunpowder', plan: 'gunpowder', seed: 21, warmup: 20, steerFrom: 20, fireMin: 68, fireAt: 140, frames: 220, score: 28760 },
   { name: 'save', plan: 'save', seed: 61, warmup: 20, steerFrom: 20, fireMin: 36, fireAt: 44, frames: 240, score: 87340, danger: -0.6 },
   // event pengganggu di papan alami (piece digerakkan pemain selama event)

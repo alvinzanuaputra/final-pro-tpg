@@ -11,7 +11,11 @@
     "prerender": "node capture/sync-assets.mjs",
     "render": "remotion render src/index.ts Trailer out/sandtilt-trailer.mp4",
     "render:id": "remotion render src/index.ts TrailerID out/sandtilt-trailer-id.mp4",
-    "prerender:id": "node capture/sync-assets.mjs"
+    "prerender:id": "node capture/sync-assets.mjs",
+    "render:short": "remotion render src/index.ts Short out/sandtilt-short.mp4",
+    "prerender:short": "node capture/sync-assets.mjs",
+    "render:short-id": "remotion render src/index.ts ShortID out/sandtilt-short-id.mp4",
+    "prerender:short-id": "node capture/sync-assets.mjs"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.547",

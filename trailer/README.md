@@ -12,6 +12,8 @@ npm run capture -- crumble          # rekam satu shot
 npm run studio                      # pratinjau & edit di browser
 npm run render                      # -> out/sandtilt-trailer.mp4 (Inggris, 1920x1080, 60 fps)
 npm run render:id                   # -> out/sandtilt-trailer-id.mp4 (Indonesia)
+npm run render:short                # -> out/sandtilt-short.mp4 (vertikal 1080x1920, 15 dtk, Inggris)
+npm run render:short-id             # -> out/sandtilt-short-id.mp4 (vertikal, Indonesia)
 ```
 
 - `capture/shots.mjs` — daftar shot: seed, durasi, dan input per frame (`tap`/`down`/`up` + kode tombol).
@@ -29,6 +31,7 @@ npm run render:id                   # -> out/sandtilt-trailer-id.mp4 (Indonesia)
 - `node capture/capture.mjs <shot> --dry` menjalankan shot tanpa menyimpan frame dan mencetak kapan clear/chain/ledakan terjadi.
 - `capture/sheet.mjs` — contact sheet untuk mengecek rekaman: `node capture/sheet.mjs cek.png chain:0,40,90 tilt:0,78`.
 - `src/copy.ts` — semua teks trailer per bahasa (`en`, `id`); istilah Indonesia mengikuti game.
+- `src/Short.tsx` — versi vertikal 15 dtk untuk Reels/TikTok/Shorts: papan saja (besar), teks di atas, potongan lebih rapat.
 - `src/Trailer.tsx` — urutan adegan, kamera (zoom/pan), teks, dan SFX. SFX mendarat dipasang otomatis
   dari `meta.json` rekaman.
 - Logo, warna, dan huruf wajib dari kode game: [../docs/BRAND.md](../docs/BRAND.md).

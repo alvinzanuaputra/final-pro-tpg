@@ -5,6 +5,7 @@ import { GameLogo, SandRain } from './gameLogo';
 import { eventFrames, SHOT } from './footage';
 import { Duck, heartbeat, Sound, soundsFor, trophySound } from './sfx';
 import { C, FPS, sec } from './theme';
+import { COPY, Lang } from './copy';
 
 // ----------------------------------------------------------------------------------------------------------------
 // Trailer SandTilt. Potongan jatuh di ketukan musik game (132 BPM -> 1 bar = 4 ketuk).
@@ -15,7 +16,7 @@ const bars = (n: number) => Math.round(n * BAR);
 
 type Side = 'right' | 'left';                            // posisi GAME di layar; teks di sisi sebaliknya
 type Beat =
-  | { kind: 'shot'; shot: string; from: number; bars: number; side: Side; text?: string; textAt?: number;
+  | { kind: 'shot'; shot: string; from: number; bars: number; side: Side; textAt?: number;
       closeup?: boolean; counter?: boolean; trophy?: { at: number; tier: 'silver' }; heartbeatUntil?: number; flashIn?: boolean }
   | { kind: 'card'; bars: number }
   | { kind: 'outro'; bars: number };
@@ -29,17 +30,17 @@ const lastHit = (shot: string) => Math.max(...ev(shot, 'clear'), ...ev(shot, 'ex
 
 const BEATS: Beat[] = [
   // intro: dua piece mendarat (close-up lalu mundur), berhenti sebelum clear pertama di rekaman
-  { kind: 'shot', shot: 'crumble', from: 20, bars: fit(20, 196), side: 'right', closeup: true, text: 'TETRIS THAT\nCRUMBLES', textAt: 108 },
-  { kind: 'shot', shot: 'tilt', from: 0, bars: fit(0, lastHit('tilt') + AFTER), side: 'left', text: 'TILT\nTHE BOARD', textAt: 4, flashIn: true },
-  { kind: 'shot', shot: 'bridge', from: 0, bars: fit(0, ev('bridge', 'clear')[0] + AFTER), side: 'right', text: 'CONNECT\nWALL TO WALL', textAt: 4 },
-  { kind: 'shot', shot: 'chain', from: 0, bars: fit(0, lastHit('chain') + AFTER), side: 'left', text: 'CHAIN\nREACTIONS', textAt: 4, counter: true,
+  { kind: 'shot', shot: 'crumble', from: 20, bars: fit(20, 196), side: 'right', closeup: true, textAt: 108 },
+  { kind: 'shot', shot: 'tilt', from: 0, bars: fit(0, lastHit('tilt') + AFTER), side: 'left', textAt: 4, flashIn: true },
+  { kind: 'shot', shot: 'bridge', from: 0, bars: fit(0, ev('bridge', 'clear')[0] + AFTER), side: 'right', textAt: 4 },
+  { kind: 'shot', shot: 'chain', from: 0, bars: fit(0, lastHit('chain') + AFTER), side: 'left', textAt: 4, counter: true,
     trophy: { at: ev('chain', 'clear', (d) => d.chain === 3)[0], tier: 'silver' } },
-  { kind: 'shot', shot: 'gunpowder', from: 0, bars: fit(0, lastHit('gunpowder') + AFTER), side: 'right', text: 'GUNPOWDER\nGOES BOOM', textAt: 4, flashIn: true },
-  { kind: 'shot', shot: 'quake', from: 0, bars: fit(0, ev('quake', 'eventStart')[0] + sec(1.2)), side: 'left', text: 'THE GROUND\nSHAKES', textAt: 4 },
-  { kind: 'shot', shot: 'wind', from: 0, bars: fit(0, ev('wind', 'windPush')[1] + sec(0.4)), side: 'right', text: 'THE WIND\nPUSHES', textAt: 4 },
-  { kind: 'shot', shot: 'force', from: 0, bars: fit(0, lastHit('force') + sec(0.6)), side: 'left', text: 'THE BOARD\nTIPS OVER', textAt: 4 },
+  { kind: 'shot', shot: 'gunpowder', from: 0, bars: fit(0, lastHit('gunpowder') + AFTER), side: 'right', textAt: 4, flashIn: true },
+  { kind: 'shot', shot: 'quake', from: 0, bars: fit(0, ev('quake', 'eventStart')[0] + sec(1.2)), side: 'left', textAt: 4 },
+  { kind: 'shot', shot: 'wind', from: 0, bars: fit(0, ev('wind', 'windPush')[1] + sec(0.4)), side: 'right', textAt: 4 },
+  { kind: 'shot', shot: 'force', from: 0, bars: fit(0, lastHit('force') + sec(0.6)), side: 'left', textAt: 4 },
   { kind: 'card', bars: 1.5 },
-  { kind: 'shot', shot: 'save', from: 0, bars: fit(0, lastHit('save') + AFTER), side: 'right', text: 'ONE PIECE\nFROM DEFEAT', textAt: 2,
+  { kind: 'shot', shot: 'save', from: 0, bars: fit(0, lastHit('save') + AFTER), side: 'right', textAt: 2,
     heartbeatUntil: ev('save', 'clear')[0], flashIn: true },
   { kind: 'outro', bars: 2.5 },
 ];
@@ -142,11 +143,11 @@ const ChainCounter: React.FC<{ frames: number[]; x: number }> = ({ frames, x }) 
   );
 };
 
-const ShotBeat: React.FC<{ b: Extract<Beat, { kind: 'shot' }> }> = ({ b }) => {
+const ShotBeat: React.FC<{ b: Extract<Beat, { kind: 'shot' }>; lang: Lang }> = ({ b, lang }) => {
   const meta = SHOT[b.shot];
   const len = bars(b.bars);
   const clears = eventFrames(meta, 'clear').map((f) => f - b.from).filter((f) => f >= 0);
-  const text = b.text || '';
+  const text = COPY[lang].shots[b.shot] || '';
   return (
     <AbsoluteFill>
       <Footage name={b.shot} frames={meta.frames} startAt={b.from} cam={camFor(b)} height={1040} />
@@ -163,11 +164,12 @@ const ShotBeat: React.FC<{ b: Extract<Beat, { kind: 'shot' }> }> = ({ b }) => {
 };
 
 /** Kartu fitur: trofi (ikon dari game) + leaderboard + kontrol. */
-const Card: React.FC<{ len: number }> = ({ len }) => {
+const Card: React.FC<{ len: number; lang: Lang }> = ({ len, lang }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const tiers = ['bronze', 'silver', 'gold', 'secret'];
-  const lines: [string, string][] = [['UNLOCK ACHIEVEMENTS', C.text], ['GLOBAL LEADERBOARD', C.accent], ['KEYBOARD OR TOUCH', C.dim]];
+  const [l1, l2, l3] = COPY[lang].card;
+  const lines: [string, string][] = [[l1, C.text], [l2, C.accent], [l3, C.dim]];
   const out = interpolate(f, [len - 8, len], [1, 0], ease);
   return (
     <AbsoluteFill style={{ opacity: out }}>
@@ -190,7 +192,7 @@ const Card: React.FC<{ len: number }> = ({ len }) => {
 };
 
 // Penutup = layar judul game: hujan pasir + logo, lalu ajakan main (font & warna game).
-const Outro: React.FC = () => {
+const Outro: React.FC<{ lang: Lang }> = ({ lang }) => {
   const frame = useCurrentFrame();
   const sub = interpolate(frame, [sec(0.9), sec(1.3)], [0, 1], ease);
   return (
@@ -198,7 +200,7 @@ const Outro: React.FC = () => {
       <SandRain unit={8} />
       <GameLogo unit={8} y={330} />
       <AbsoluteFill style={{ alignItems: 'center', top: 560, opacity: sub, transform: `translateY(${(1 - sub) * 20}px)` }}>
-        <GameText text="PLAY FREE IN YOUR BROWSER" px={7} color={C.text} />
+        <GameText text={COPY[lang].play} px={7} color={C.text} />
         <GameText text="SANDTILT.VERCEL.APP" px={6} color={C.accent} style={{ marginTop: 30 }} />
       </AbsoluteFill>
     </AbsoluteFill>
@@ -206,15 +208,16 @@ const Outro: React.FC = () => {
 };
 
 // ----------------------------------------------------------------------------------------------------------------
-export const Trailer: React.FC = () => (
+/** lang: 'en' (komposisi Trailer) atau 'id' (komposisi TrailerID). Potongan, rekaman, dan suara identik. */
+export const Trailer: React.FC<{ lang?: Lang }> = ({ lang = 'en' }) => (
   <AbsoluteFill>
     <Backdrop />
     <Audio src={staticFile('game/music/game.mp3')} volume={musicVolume} loop />
     {BEATS.map((b, i) => (
       <Sequence key={i} from={STARTS[i]} durationInFrames={bars(b.bars)} name={b.kind === 'shot' ? b.shot : b.kind}>
-        {b.kind === 'shot' && <ShotBeat b={b} />}
-        {b.kind === 'card' && <Card len={bars(b.bars)} />}
-        {b.kind === 'outro' && (<><Flash /><Outro /></>)}
+        {b.kind === 'shot' && <ShotBeat b={b} lang={lang} />}
+        {b.kind === 'card' && <Card len={bars(b.bars)} lang={lang} />}
+        {b.kind === 'outro' && (<><Flash /><Outro lang={lang} /></>)}
       </Sequence>
     ))}
     {CUES.map((c, i) => (

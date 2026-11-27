@@ -10,7 +10,8 @@ npx playwright install chromium     # sekali saja
 npm run capture                     # rekam semua shot -> public/footage/<shot>/
 npm run capture -- crumble          # rekam satu shot
 npm run studio                      # pratinjau & edit di browser
-npm run render                      # -> out/sandtilt-trailer.mp4 (1920x1080, 60 fps)
+npm run render                      # -> out/sandtilt-trailer.mp4 (Inggris, 1920x1080, 60 fps)
+npm run render:id                   # -> out/sandtilt-trailer-id.mp4 (Indonesia)
 ```
 
 - `capture/shots.mjs` — daftar shot: seed, durasi, dan input per frame (`tap`/`down`/`up` + kode tombol).
@@ -27,6 +28,7 @@ npm run render                      # -> out/sandtilt-trailer.mp4 (1920x1080, 60
   Event game per frame dicatat ke `meta.json` untuk SFX.
 - `node capture/capture.mjs <shot> --dry` menjalankan shot tanpa menyimpan frame dan mencetak kapan clear/chain/ledakan terjadi.
 - `capture/sheet.mjs` — contact sheet untuk mengecek rekaman: `node capture/sheet.mjs cek.png chain:0,40,90 tilt:0,78`.
+- `src/copy.ts` — semua teks trailer per bahasa (`en`, `id`); istilah Indonesia mengikuti game.
 - `src/Trailer.tsx` — urutan adegan, kamera (zoom/pan), teks, dan SFX. SFX mendarat dipasang otomatis
   dari `meta.json` rekaman.
 - Logo, warna, dan huruf wajib dari kode game: [../docs/BRAND.md](../docs/BRAND.md).

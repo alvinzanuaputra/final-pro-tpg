@@ -1327,6 +1327,8 @@ const TEXT = compile({
   '>': '01000 00100 00010 00001 00010 00100 01000', '<': '00010 00100 01000 10000 01000 00100 00010',
   '_': '00000 00000 00000 00000 00000 00000 11111', '=': '00000 00000 11111 00000 11111 00000 00000',
   '^': '00100 01010 10001 00000 00000 00000 00000', '~': '00000 00000 01000 10101 00010 00000 00000',
+  '&': '01100 10010 10100 01000 10101 10010 01101', '"': '01010 01010 00000 00000 00000 00000 00000',
+  '·': '00000 00000 00000 00100 00000 00000 00000', ';': '00000 01100 01100 00000 01100 00100 01000',
   // panah & spasi untuk tombol kecil di petunjuk kontrol (ketebalan sama dengan huruf)
   '←': '00000 00100 01000 11111 01000 00100 00000', '→': '00000 00100 00010 11111 00010 00100 00000',
   '↑': '00100 01110 10101 00100 00100 00100 00000', '↓': '00000 00100 00100 00100 10101 01110 00100',
@@ -4569,6 +4571,15 @@ function layout() {
   canvas.style.height = '0px';
   const r = slotEl.getBoundingClientRect();
   renderer.resize(r.width - 2, r.height - 2);
+  // Modal HTML (nama, KREDIT) memakai font 5x7 yang sama dengan ukuran titik yang sama dengan teks kanvas
+  // (titik kanvas = renderer.tp piksel perangkat → bagi dpr untuk px CSS; judul = ukuran 1.5 seperti kanvas).
+  // Di HP titik kanvas bisa sangat kecil, jadi ada batas minimum (px CSS) supaya modal tetap terbaca;
+  // dibulatkan ke piksel perangkat supaya huruf tetap tajam.
+  const dpr = window.devicePixelRatio || 1, root = document.documentElement.style;
+  const dot = (size, minCss) => `${Math.max(renderer.px(size), Math.round(minCss * dpr)) / dpr}px`;
+  root.setProperty('--mpx', dot(1, 2));
+  root.setProperty('--mpx-title', dot(1.5, 3));
+  root.setProperty('--mpx-small', dot(0.75, 1.5));   // teks sekunder (isi/keterangan)
 }
 let layoutQueued = false;
 const queueLayout = () => {

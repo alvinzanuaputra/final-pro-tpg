@@ -46,6 +46,8 @@ const CFG = {
   // Event pengganggu
   EVENT_FIRST: [35, 50],           // detik sampai event pertama (acak di rentang ini)
   EVENT_WARN: 3,                   // detik peringatan sebelum event mulai
+  EVENT_SPREAD: 0.2,               // jeda antar event acak ±20% dari rata-rata level (lihat eventGap)
+  BOSS_EVENT_DELAY: 3,             // detik setelah masuk level boss sampai peringatan event yang pasti muncul
   QUAKE_DURATION: 1.6,
   QUAKE_JITTER: 0.35,
   QUAKE_SWAPS: 400,                // tukar butir acak per tick saat gempa (mengacak isi tumpukan)
@@ -73,7 +75,7 @@ const CFG = {
 
 // ------------------------------------------------------------ kesulitan per level
 // Kurva bergerigi (GDD 4.2): tiap level ke-5 adalah level BOSS (event jauh lebih sering,
-// kecepatan tidak ikut naik); level sesudahnya LEMBAH (kecepatan turun, event jarang).
+// kecepatan tidak ikut naik, event pasti muncul); level sesudahnya LEMBAH (kecepatan turun, event lebih longgar).
 // Setelah kecepatan mentok (level 40) yang terus naik pelan hanya event dan batu.
 const FALL = [0.8, 0.72, 0.65, 0.58, 0.58, 0.55, 0.5, 0.455, 0.41, 0.41, 0.38, 0.35, 0.32,
   0.29, 0.29, 0.27, 0.25, 0.23, 0.21, 0.21, 0.2, 0.19, 0.18, 0.17, 0.17];   // detik per baris, level 1..25
@@ -85,10 +87,6 @@ function fallFor(level) {
   if (level < 40) return 0.11;
   return 0.10;
 }
-// Jeda antar event [min, maks] detik untuk level 1..20 (event pertama tetap EVENT_FIRST).
-const EVENT_GAPS = [[45, 75], [45, 75], [45, 70], [40, 65], [20, 30], [60, 90], [40, 60], [40, 60], [40, 60],
-  [18, 25], [60, 90], [35, 50], [35, 50], [35, 50], [15, 22], [60, 90], [30, 45], [30, 45], [30, 45], [12, 18]];
-
 const isBossLevel = (level) => level % 5 === 0;
 const isTroughLevel = (level) => level > 1 && level % 5 === 1;
 
@@ -120,14 +118,23 @@ function gunChance(level) {
   if (level >= 2) return 0.08;
   return 0;
 }
-function eventGap(level) {
-  if (level <= 20) return EVENT_GAPS[level - 1];
-  const k = Math.max(0, Math.floor((level - 26) / 5));   // makin rapat tiap 5 level setelah level 25
-  const around = (mid, spread) => [mid - spread, mid + spread];
-  if (isBossLevel(level)) return around(Math.max(9, 13 - k * 0.5), 3);
-  if (isTroughLevel(level)) return around(Math.max(50, 75 - k * 2), 15);
-  return around(Math.max(22, 34 - k), 6);
+// Jeda rata-rata antar event di level normal: turun 1,5 dtk/level sampai 20 dtk (level 21),
+// lalu 0,25 dtk/level sampai minimum 12 dtk (level 53). Tidak pernah naik lagi.
+function normalGap(level) {
+  if (level <= 21) return 50 - 1.5 * (level - 1);
+  return Math.max(12, 20 - 0.25 * (level - 21));
 }
+// Boss: setengah jeda normal (min 9 dtk). Lembah: sama dengan level normal sebelum boss,
+// jadi lebih santai dari boss tapi tidak pernah lebih jarang dari level-level sebelumnya.
+function eventGap(level) {
+  const mid = isBossLevel(level) ? Math.max(9, normalGap(level) * 0.5)
+    : isTroughLevel(level) ? normalGap(level - 2) : normalGap(level);
+  return [mid * (1 - CFG.EVENT_SPREAD), mid * (1 + CFG.EVENT_SPREAD)];
+}
+
+// Jenis event yang pasti muncul di level boss: bergiliran gempa → papan miring → angin.
+const BOSS_EVENTS = ['quake', 'force', 'wind'];
+const bossEventType = (level) => BOSS_EVENTS[(Math.floor(level / 5) - 1) % BOSS_EVENTS.length];
 
 // Semua angka kesulitan untuk satu level. Peluang batu/mesiu = peluang NYATA per piece.
 function levelConfig(level) {
@@ -141,7 +148,7 @@ function levelConfig(level) {
 
 const STORAGE_PREFIX = 'sandtilt.';
 
-return { BLOCK, COLS, ROWS, W, H, MAT_SAND, MAT_STONE, MAT_GUN, CFG, isBossLevel, isTroughLevel, clearFlash, colorsForLevel, levelConfig, STORAGE_PREFIX };
+return { BLOCK, COLS, ROWS, W, H, MAT_SAND, MAT_STONE, MAT_GUN, CFG, isBossLevel, isTroughLevel, clearFlash, colorsForLevel, bossEventType, levelConfig, STORAGE_PREFIX };
 })();
 
 // ===================================================================== js/util.js
@@ -550,7 +557,7 @@ return { TYPES, SHAPES, Bag };
 
 // ===================================================================== js/game.js
 __mod["game"] = (function () {
-const { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig, clearFlash } = __mod["config"];
+const { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig, clearFlash, bossEventType } = __mod["config"];
 const { makeRng } = __mod["util"];
 const { Sand } = __mod["sim"];
 const { SHAPES, Bag } = __mod["pieces"];
@@ -594,6 +601,8 @@ class Game {
     this.event = null;              // { type: 'quake'|'wind'|'force', dir, phase: 'warn'|'active', t }
     this.eventTimer = this.randRange(CFG.EVENT_FIRST);
     this.eventsSurvived = 0;
+    this.eventBag = [];             // kantong jenis event: tiap 3 event pasti berisi gempa, angin, papan miring
+    this.bossEvent = null;          // jenis event yang pasti muncul karena baru masuk level boss
 
     this.danger = 0;
     this.overflow = [];             // butir piece yang terkunci di atas papan, menunggu dituang masuk
@@ -779,9 +788,8 @@ class Game {
     if (!this.event) {
       this.eventTimer -= dt;
       if (this.eventTimer > 0) return;
-      const types = ['quake', 'wind', 'force'];
-      const type = types[Math.floor(this.rng() * types.length)];
-      this.event = { type, dir: this.rng() < 0.5 ? -1 : 1, phase: 'warn', t: CFG.EVENT_WARN, push: 0 };
+      const type = this.nextEventType();
+      this.event ={ type, dir: this.rng() < 0.5 ? -1 : 1, phase: 'warn', t: CFG.EVENT_WARN, push: 0 };
       this.events.emit('eventWarn', this.event);
       return;
     }
@@ -808,8 +816,37 @@ class Game {
       this.eventsSurvived++;
       this.events.emit('eventEnd', { ...e, survived: this.eventsSurvived });
       this.event = null;
-      this.eventTimer = this.randRange(levelConfig(this.level).eventGap);
+      const gap = this.randRange(levelConfig(this.level).eventGap);
+      // Event boss yang tertunda (level boss tercapai saat event lain berjalan) menyusul cepat.
+      this.eventTimer = this.bossEvent ? Math.min(gap, CFG.BOSS_EVENT_DELAY) : gap;
     }
+  }
+
+  // Jenis event berikutnya. Event boss memakai jenis gilirannya dan diambil dari kantong
+  // kalau masih ada di sana, supaya jaminan "tiap 3 event ada semua jenis" tetap terjaga.
+  nextEventType() {
+    if (this.eventBag.length === 0) {
+      const bag = ['quake', 'wind', 'force'];
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(this.rng() * (i + 1));
+        [bag[i], bag[j]] = [bag[j], bag[i]];
+      }
+      this.eventBag = bag;
+    }
+    if (this.bossEvent) {
+      const type = this.bossEvent;
+      this.bossEvent = null;
+      const i = this.eventBag.indexOf(type);
+      if (i >= 0) this.eventBag.splice(i, 1);
+      return type;
+    }
+    return this.eventBag.pop();
+  }
+
+  // Masuk level boss: event jenis gilirannya pasti muncul BOSS_EVENT_DELAY detik lagi.
+  queueBossEvent(level) {
+    this.bossEvent = bossEventType(level);
+    if (!this.event) this.eventTimer = CFG.BOSS_EVENT_DELAY;
   }
 
   // Piece hancur jadi pasir.
@@ -888,13 +925,10 @@ class Game {
       this.level = newLevel;
       const lc = levelConfig(newLevel);
       if (lc.colors > this.numColors) { this.numColors = lc.colors; this.breather = CFG.BREATHER; }
-      // Hitung mundur event ikut jeda level baru: level boss langsung lebih rapat,
-      // level lembah langsung lebih longgar (event yang sedang berjalan tidak diganggu).
-      if (!this.event) {
-        const next = this.randRange(lc.eventGap);
-        if (lc.boss) this.eventTimer = Math.min(this.eventTimer, next);
-        else if (lc.trough) this.eventTimer = Math.max(this.eventTimer, next);
-      }
+      // Level boss: event pasti muncul sebentar lagi. Level lembah: hitung mundur langsung
+      // dilonggarkan ke jeda lembah (event yang sedang berjalan tidak diganggu).
+      if (lc.boss && this.rules.events) this.queueBossEvent(newLevel);
+      else if (lc.trough && !this.event) this.eventTimer = Math.max(this.eventTimer, this.randRange(lc.eventGap));
       this.events.emit('levelUp', { level: this.level, colors: this.numColors, boss: lc.boss, tiltsUsed: this.tilt.used });
     }
   }
@@ -3526,6 +3560,7 @@ function startGame() {
     game.clears = (TEST.level - 1) * CFG.CLEARS_PER_LEVEL;
     game.numColors = colorsForLevel(TEST.level);
     game.eventTimer = Math.min(game.eventTimer, game.randRange(levelConfig(TEST.level).eventGap));
+    if (levelConfig(TEST.level).boss) game.queueBossEvent(TEST.level);
   }
   if (TEST.on) renderer.showToast('MODE UJI', 'SKOR DAN PRESTASI TIDAK DISIMPAN');
   ach.sessionNew = 0;

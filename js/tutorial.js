@@ -7,8 +7,9 @@ import { t } from './i18n.js';
 //   2 JATUH     turun pelan + jatuh instan → piece hancur jadi pasir
 //   3 JEMBATAN  papan disiapkan: jembatan merah bercelah, isi celahnya dengan piece merah
 //   4 MIRING    papan disiapkan: pasir merah belum sampai dinding kanan, tahan miring ke kanan
-//   5 BATU      lubang dalam di antara dua pilar. Game memperagakan balok PASIR rontok ke lubang,
-//               lalu pemain menjatuhkan balok BATU: tetap utuh di atas lubang dan jadi jembatan
+//   5 BATU      lubang dalam di antara dua pilar. Game memperagakan balok PASIR kuning rontok ke lubang,
+//               lalu pemain menjatuhkan balok BATU kuning (warna sama, tidak jadi jembatan): batu tetap
+//               utuh di atas lubang dan TETAP TERLIHAT saat pesan BAGUS! muncul (tidak perlu clear)
 //   6 MESIU     tumpukan batu yang dialiri mesiu di sebelah celah; jembatan merah di-clear →
 //               mesiu menyala → tumpukan batu meledak
 // Selama tutorial: tanpa event, garis bahaya, naik level, prestasi, dan skor tidak dikirim.
@@ -23,10 +24,12 @@ const PIT_X0 = 32, PIT_X1 = 48;
 // Tumpukan batu + mesiu langkah MESIU: 4 blok lebar, 4 blok tinggi di kiri.
 const MOUND_W = 32, MOUND_H = 4 * BLOCK;
 const FAIL_WAIT = 2.2;          // detik tanpa clear setelah percobaan → papan disiapkan ulang
+const STONE_SETTLE = 0.9;       // langkah BATU: detik setelah batu mendarat sebelum dicek (batu sudah diam)
 
 const STEPS = ['move', 'drop', 'bridge', 'tilt', 'stone', 'gun'];
 // Langkah yang selesai lewat clear setelah pemain menjatuhkan piece (gagal → coba lagi).
-const PLACE_STEPS = new Set(['bridge', 'stone', 'gun']);
+// BATU tidak termasuk: selesai saat batu terbukti tetap utuh di atas lubang (lihat checkStone).
+const PLACE_STEPS = new Set(['bridge', 'gun']);
 // Langkah pengenalan tombol: SEMUA tombol ini harus dicoba dulu (tombol yang sudah dipakai ditampilkan pudar).
 const REQUIRED = { move: ['left', 'right', 'rotCW', 'rotCCW'], drop: ['soft', 'hard'] };
 
@@ -65,6 +68,7 @@ export class Tutorial {
     this.used = new Set();  // aksi yang sudah dicoba di langkah ini
     this.phase = '';       // langkah BATU: 'demo' (peragaan pasir) → 'watch' (pasir rontok) → 'try'
     this.timer = 0;
+    this.settle = 0;       // langkah BATU: > 0 → hitung mundur sebelum memeriksa batu yang mendarat
     this.setup();
   }
 
@@ -114,16 +118,34 @@ export class Tutorial {
     }
   }
 
-  // giliran pemain di langkah BATU: balok batu merah di atas lubang
+  // giliran pemain di langkah BATU: balok BATU kuning (warna sama dengan pasir peragaan) di atas lubang.
+  // Kuning tidak menyambung lapisan merah, jadi tidak terjadi clear dan batunya tetap terlihat.
   startTry() {
     const r = this.game.rules, s = this.game.sand;
     // sisa pasir peragaan di atas pilar dibuang (yang sudah rontok ke lubang tetap terlihat),
-    // supaya batu mendarat langsung di pilar dan menyentuh lapisan merah
+    // supaya batu mendarat langsung di pilar
     for (let i = 0; i < LAYER_Y * W; i++) { s.cells[i] = 0; s.mat[i] = 0; }
     this.game.dirty = true;
     this.phase = 'try';
     r.controls = true; r.fall = 0.55;
-    this.game.spawnSpec({ type: 'I', color: RED, mat: MAT_STONE });
+    this.game.spawnSpec({ type: 'I', color: YELLOW, mat: MAT_STONE });
+  }
+
+  // Batu berhasil kalau ada butir batu di atas lubang (di atas lapisan, kolom lubang) DAN tidak ada
+  // batu di dalam lubang: artinya batu tertahan pilar dan tidak rontok seperti pasir. Gagal kalau batu
+  // masuk lubang (mis. diputar tegak; ujungnya bisa tetap menyembul di atas lubang) atau tidak menutupinya.
+  checkStone() {
+    const s = this.game.sand;
+    let above = false;
+    for (let y = 0; y < H; y++) {
+      for (let x = PIT_X0; x < PIT_X1; x++) {
+        const i = y * W + x;
+        if (s.cells[i] === 0 || s.mat[i] !== MAT_STONE) continue;
+        if (y >= LAYER_Y) return false;   // batu di dalam lubang
+        above = true;
+      }
+    }
+    return above;
   }
 
   // Isi ulang papan: fn(x, y) → warna (0 = kosong) atau [warna, material].
@@ -156,6 +178,8 @@ export class Tutorial {
     if (this.key === 'drop' && this.allUsed()) this.succeed();
     // peragaan BATU: pasir sudah mendarat, beri waktu melihatnya rontok ke lubang
     else if (this.phase === 'demo') { this.phase = 'watch'; this.timer = 2.2; }
+    // batu pemain mendarat: tunggu sampai diam, lalu periksa apakah tetap di atas lubang
+    else if (this.phase === 'try') this.settle = STONE_SETTLE;
     // piece pemain sudah mendarat: tunggu sebentar, kalau tidak terjadi clear berarti gagal
     else if (PLACE_STEPS.has(this.key)) this.fail = FAIL_WAIT;
   }
@@ -165,7 +189,8 @@ export class Tutorial {
     this.done = true;
     this.fail = 0;
     this.retry = false;
-    this.wait = this.key === 'gun' ? 2.4 : PLACE_STEPS.has(this.key) || this.key === 'tilt' ? 1.8 : 1.0;   // beri waktu melihat clear/ledakan
+    // beri waktu melihat clear/ledakan; BATU lebih lama supaya batu yang utuh & pasir di lubang sempat dibandingkan
+    this.wait = this.key === 'gun' || this.key === 'stone' ? 2.6 : PLACE_STEPS.has(this.key) || this.key === 'tilt' ? 1.8 : 1.0;
     if (this.key === 'move') this.game.rules.fall = 0.5;   // piece yang sama langsung jatuh di langkah berikutnya
   }
 
@@ -191,6 +216,14 @@ export class Tutorial {
     if (this.phase === 'watch') {
       this.timer -= dt;
       if (this.timer <= 0) this.startTry();
+      return;
+    }
+    if (this.settle > 0) {
+      this.settle -= dt;
+      if (this.settle <= 0) {
+        if (this.checkStone()) this.succeed();
+        else { this.retries++; this.go(this.step, true); }
+      }
       return;
     }
     // Langkah miring gagal: sudah dicoba, meter dilepas cukup lama, tetapi belum ada clear.
@@ -224,13 +257,13 @@ export class Tutorial {
       good: this.done, retry: this.retry && !this.done,
     };
     // contoh tekstur material di samping judul
-    if (k === 'stone') v.mat = { mat: this.phase === 'try' || this.done ? MAT_STONE : 0, color: RED };
+    if (k === 'stone') v.mat = { mat: this.phase === 'try' || this.done ? MAT_STONE : 0, color: YELLOW };
     if (k === 'gun') v.mat = { mat: MAT_GUN, color: YELLOW };
     if (this.done) return v;
     const above = LAYER_Y - 2 * BLOCK;
     if (k === 'bridge') v.mark = { walls: true, arrowX: (GAP_X0 + GAP_X1) / 2, arrowY: above };
     if (k === 'tilt') v.mark = { walls: true, push: 1, arrowY: LAYER_Y - 5 };
-    if (k === 'stone') v.mark = { walls: this.phase === 'try', arrowX: (PIT_X0 + PIT_X1) / 2, arrowY: above };
+    if (k === 'stone') v.mark = { arrowX: (PIT_X0 + PIT_X1) / 2, arrowY: above };
     if (k === 'gun') {
       v.mark = { walls: true, arrowX: (GAP_X0 + GAP_X1) / 2, arrowY: above,
         box: { x: 0, y: LAYER_Y - MOUND_H, w: MOUND_W, h: MOUND_H } };
@@ -306,8 +339,8 @@ const TEXT = {
   },
   stone: {
     title: 'BATU',
-    body: 'BATU KAKU, TIDAK RONTOK. JATUHKAN DI ATAS LUBANG!',
-    good: 'BATU TETAP UTUH DAN JADI JEMBATAN!',
+    body: 'SEKARANG BALOK BATU. JATUHKAN DI ATAS LUBANG YANG SAMA!',
+    good: 'PASIR RONTOK, BATU TETAP UTUH: BATU KAKU!',
   },
   gun: {
     title: 'MESIU',

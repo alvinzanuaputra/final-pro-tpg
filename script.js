@@ -3972,7 +3972,11 @@ const SCROLL_KEYS = { PageUp: -1, PageDown: 1, Home: -Infinity, End: Infinity };
 function onUiKey(e) {
   if (nameBox.classList.contains('show')) return;
   if (creditsOpen()) {
-    if (e.code === 'Escape' || e.code === 'Backspace' || e.code === 'Enter') { e.preventDefault(); closeCredits(); }
+    // Spasi diblokir input.js (supaya halaman tidak menggulir), jadi tombol yang fokus tidak "terklik"
+    // sendiri: Enter/Spasi pada link yang dipilih dengan Tab membuka link itu, selain itu menutup KREDIT.
+    const link = document.activeElement && document.activeElement.closest && document.activeElement.closest('#credits a');
+    if ((e.code === 'Enter' || e.code === 'Space') && link) { e.preventDefault(); link.click(); return; }
+    if (e.code === 'Escape' || e.code === 'Backspace' || e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); closeCredits(); }
     return;
   }
   unlockAudio();

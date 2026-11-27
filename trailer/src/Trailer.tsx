@@ -2,7 +2,7 @@ import React from 'react';
 import { AbsoluteFill, Audio, Img, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { Backdrop, BOARD, Flash, Footage, GameText, SlamText, SRC_H, SRC_W } from './components';
 import { GameLogo, SandRain } from './gameLogo';
-import { eventFrames, SHOT } from './footage';
+import { eventFrames, SHOT, SHOTS_BY_LANG } from './footage';
 import { Duck, heartbeat, Sound, soundsFor, trophySound } from './sfx';
 import { C, FPS, sec } from './theme';
 import { COPY, Lang } from './copy';
@@ -53,7 +53,7 @@ type Cue = { at: number; s: Sound };
 export type Cut = { beats: Beat[]; starts: number[]; total: number; cues: Cue[]; musicVolume: (f: number) => number };
 
 const MUSIC = 0.5;
-export function buildCut(beats: Beat[]): Cut {
+export function buildCut(beats: Beat[], lang: Lang): Cut {
   const starts: number[] = [];
   let acc = 0;
   for (const b of beats) { starts.push(acc); acc += bars(b.bars); }
@@ -68,7 +68,7 @@ export function buildCut(beats: Beat[]): Cut {
       return;
     }
     if (b.kind !== 'shot') return;
-    const meta = SHOT[b.shot];
+    const meta = SHOTS_BY_LANG[lang][b.shot];     // SFX dari rekaman bahasa ini (timing geser/putar bisa beda)
     const len = bars(b.bars);
     for (let f = b.from; f < Math.min(meta.frames, b.from + len); f++) {
       for (const e of meta.log[f].ev) {
@@ -113,8 +113,8 @@ export const CutAudio: React.FC<{ cut: Cut }> = ({ cut }) => (
   </>
 );
 
-const CUT = buildCut(BEATS);
-export const TRAILER_FRAMES = CUT.total;
+const CUTS: Record<Lang, Cut> = { en: buildCut(BEATS, 'en'), id: buildCut(BEATS, 'id') };
+export const TRAILER_FRAMES = CUTS.id.total;
 
 // ----------------------------------------------------------------------------------------------------------------
 // kamera
@@ -170,7 +170,7 @@ const ShotBeat: React.FC<{ b: Extract<Beat, { kind: 'shot' }>; lang: Lang }> = (
   const text = COPY[lang].shots[b.shot] || '';
   return (
     <AbsoluteFill>
-      <Footage name={b.shot} frames={meta.frames} startAt={b.from} cam={camFor(b)} height={1040} />
+      <Footage name={`${lang}/${b.shot}`} frames={meta.frames} startAt={b.from} cam={camFor(b)} height={1040} />
       {text && (
         <Sequence from={b.textAt || 0} durationInFrames={len - (b.textAt || 0)}>
           <SlamText text={text} colors={[C.text, b.accent || C.accent]} x={textX(b.side)} y={b.counter ? 440 : 540} px={textPx(text)}
@@ -232,9 +232,9 @@ const Outro: React.FC<{ lang: Lang }> = ({ lang }) => {
 export const Trailer: React.FC<{ lang?: Lang }> = ({ lang = 'en' }) => (
   <AbsoluteFill>
     <Backdrop />
-    <CutAudio cut={CUT} />
+    <CutAudio cut={CUTS[lang]} />
     {BEATS.map((b, i) => (
-      <Sequence key={i} from={CUT.starts[i]} durationInFrames={bars(b.bars)} name={b.kind === 'shot' ? b.shot : b.kind}>
+      <Sequence key={i} from={CUTS[lang].starts[i]} durationInFrames={bars(b.bars)} name={b.kind === 'shot' ? b.shot : b.kind}>
         {b.kind === 'shot' && <ShotBeat b={b} lang={lang} />}
         {b.kind === 'card' && <Card len={bars(b.bars)} lang={lang} />}
         {b.kind === 'outro' && (<><Flash /><Outro lang={lang} /></>)}

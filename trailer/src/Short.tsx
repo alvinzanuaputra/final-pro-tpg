@@ -36,12 +36,12 @@ const SHOTS: ShotBeat[] = [
 ];
 const used = SHOTS.reduce((a, b) => a + bars(b.bars), 0);
 const BEATS: Beat[] = [...SHOTS, { kind: 'outro', bars: (TARGET - used) / BAR }];   // sisa waktu untuk logo
-const CUT = buildCut(BEATS);
-export const SHORT_FRAMES = CUT.total;
+const CUTS = { en: buildCut(BEATS, 'en'), id: buildCut(BEATS, 'id') };
+export const SHORT_FRAMES = CUTS.id.total;
 
 // ----------------------------------------------------------------------------------------------------------------
 /** Hanya area papan dari rekaman, diperbesar; zoom kecil saat chain/ledakan, dorongan pelan sepanjang adegan. */
-const Board: React.FC<{ b: ShotBeat }> = ({ b }) => {
+const Board: React.FC<{ b: ShotBeat; lang: Lang }> = ({ b, lang }) => {
   const f = useCurrentFrame();
   const meta = SHOT[b.shot];
   const len = bars(b.bars);
@@ -53,7 +53,7 @@ const Board: React.FC<{ b: ShotBeat }> = ({ b }) => {
   return (
     <div style={{ position: 'absolute', left: BL, top: BT, width: BW, height: BH, overflow: 'hidden',
       transform: `scale(${scale})`, transformOrigin: '50% 60%' }}>
-      <Img src={staticFile(`footage/${b.shot}/${String(idx).padStart(4, '0')}.png`)}
+      <Img src={staticFile(`footage/${lang}/${b.shot}/${String(idx).padStart(4, '0')}.png`)}
         style={{ position: 'absolute', left: -BOARD.x * K, top: -BOARD.y * K, width: 800 * K, height: 880 * K, imageRendering: 'pixelated' }} />
     </div>
   );
@@ -81,7 +81,7 @@ const ShortShot: React.FC<{ b: ShotBeat; lang: Lang }> = ({ b, lang }) => {
   const text = COPY[lang].shots[b.shot] || '';
   return (
     <AbsoluteFill>
-      <Board b={b} />
+      <Board b={b} lang={lang} />
       <SlamText text={text} colors={[C.text, b.accent || C.accent]} x={SHORT_W / 2} y={b.counter ? 150 : 240}
         px={textPx(text)} align="center" hold={len - 6} />
       {b.counter && <Counter frames={clears} />}
@@ -109,9 +109,9 @@ const ShortOutro: React.FC<{ lang: Lang }> = ({ lang }) => {
 export const Short: React.FC<{ lang?: Lang }> = ({ lang = 'en' }) => (
   <AbsoluteFill>
     <Backdrop />
-    <CutAudio cut={CUT} />
+    <CutAudio cut={CUTS[lang]} />
     {BEATS.map((b, i) => (
-      <Sequence key={i} from={CUT.starts[i]} durationInFrames={bars(b.bars)} name={b.kind === 'shot' ? b.shot : b.kind}>
+      <Sequence key={i} from={CUTS[lang].starts[i]} durationInFrames={bars(b.bars)} name={b.kind === 'shot' ? b.shot : b.kind}>
         {b.kind === 'shot' && <ShortShot b={b} lang={lang} />}
         {b.kind === 'outro' && (<><Flash /><ShortOutro lang={lang} /></>)}
       </Sequence>

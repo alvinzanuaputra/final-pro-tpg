@@ -15,12 +15,15 @@ import { SHOTS } from './shots.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GAME_ROOT = resolve(HERE, '..', '..');            // root repo (index.html game)
-const OUT_ROOT = resolve(HERE, '..', 'public', 'footage');
+// bahasa UI game saat merekam: --lang=en | --lang=id (default id). Rekaman tiap bahasa di folder sendiri.
+const LANG = (process.argv.find((a) => a.startsWith('--lang=')) || '--lang=id').slice(7);
+const OUT_ROOT = resolve(HERE, '..', 'public', 'footage', LANG);
 const FPS = 60;
 const window_stage = (cfg) => window.__stage(cfg);
-const ALL_ACH = ['first_bridge', 'chain3', 'chain5', 'tilt_master', 'close_call', 'clean_board', 'boom', 'stone_breaker',
-  'no_tilt', 'marathon', 'quake', 'counter'];
-export const DEFAULT_STORAGE = { ach: ALL_ACH, seenMats: [1, 2], best: 152340 };
+const ALL_ACH = ['tutorial', 'first_bridge', 'chain3', 'tilt_master', 'close_call', 'clean_board', 'boom', 'stone_breaker',
+  'no_tilt', 'survivor', 'marathon', 'chain5', 'quake', 'counter'];
+// versi data sama dengan main.js (kalau beda, game mereset skor/prestasi saat dibuka); tutorial dianggap selesai
+export const DEFAULT_STORAGE = { ach: ALL_ACH, achVersion: 2, scoreVersion: 2, tutorialDone: true, seenMats: [1, 2], best: 152340 };
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.mp3': 'audio/mpeg',
   '.json': 'application/json', '.ttf': 'font/ttf', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml' };
@@ -47,16 +50,20 @@ const SEEDED_RANDOM = `(() => {
 
 async function captureShot(browser, base, shot) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
-  await page.clock.install({ time: 0 });                 // jam dibekukan: loop rAF game tidak jalan sendiri
+  await page.clock.install({ time: 0 });                 // jam palsu (masih berjalan sampai di-pause di bawah)
   await page.addInitScript(SEEDED_RANDOM);
   await page.addInitScript({ path: join(HERE, 'scenario.js') });
   // Pemain "berpengalaman": semua trofi sudah terbuka (tidak ada toast mengganggu), material sudah dikenal,
   // skor terbaik realistis. Shot boleh menimpa lewat shot.storage (mis. menyisakan satu trofi untuk dimunculkan).
-  const storage = { ...DEFAULT_STORAGE, ...(shot.storage || {}) };
+  const storage = { ...DEFAULT_STORAGE, lang: LANG, ...(shot.storage || {}) };
   await page.addInitScript((kv) => { for (const k in kv) localStorage.setItem('sandtilt.' + k, JSON.stringify(kv[k])); }, storage);
   await page.goto(`${base}/?seed=${shot.seed}&lb=off${shot.query || ''}`);
   await page.waitForFunction(() => window.sandtilt && window.advanceTime);
-  await page.evaluate(() => { window.sandtilt.startGame(); window.__hookEvents(); });
+  // Bekukan jam: tanpa ini loop requestAnimationFrame game tetap jalan real-time di sela rekaman dan menggeser
+  // hasil +-1 frame (tidak deterministik). Setelah pause, game hanya maju lewat advanceTime().
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+  // startGame() mengaktifkan input di requestAnimationFrame berikutnya; jam sedang dijeda, jadi aktifkan langsung
+  await page.evaluate(() => { window.sandtilt.startGame(); window.sandtilt.input.enabled = true; window.__hookEvents(); });
   if (shot.setup) await page.evaluate(shot.setup);
   if (shot.plan) {
     const plan = JSON.parse(await readFile(join(HERE, 'plans', `${shot.plan}.json`), 'utf8'));
@@ -112,6 +119,7 @@ async function captureShot(browser, base, shot) {
 
 const DRY = process.argv.includes('--dry');
 const only = process.argv.slice(2).find((a) => !a.startsWith('--'));
+console.log(`bahasa game: ${LANG}`);
 const shots = SHOTS.filter((s) => !only || s.name === only);
 if (!shots.length) { console.error(`Shot "${only}" tidak ada. Pilihan: ${SHOTS.map((s) => s.name).join(', ')}`); process.exit(1); }
 

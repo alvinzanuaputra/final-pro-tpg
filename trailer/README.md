@@ -7,7 +7,8 @@ Rencana & storyboard: [../docs/TRAILER-plan.md](../docs/TRAILER-plan.md).
 cd trailer
 npm install
 npx playwright install chromium     # sekali saja
-npm run capture                     # rekam semua shot -> public/footage/<shot>/
+npm run capture -- --lang=en        # rekam semua shot dengan UI game berbahasa Inggris -> public/footage/en/<shot>/
+npm run capture -- --lang=id        # ... berbahasa Indonesia -> public/footage/id/<shot>/
 npm run capture -- crumble          # rekam satu shot
 npm run studio                      # pratinjau & edit di browser
 npm run render                      # -> out/sandtilt-trailer.mp4 (Inggris, 1920x1080, 60 fps)

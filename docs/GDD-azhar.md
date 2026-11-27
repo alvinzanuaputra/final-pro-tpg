@@ -103,6 +103,7 @@ Setiap piece punya **warna** (3–5 warna aktif) **dan material**. Material khus
 ### 3.9 Tutorial (pemain baru)
 - **Otomatis** saat pertama kali menekan MAIN di perangkat itu (`tutorialDone` di `localStorage`). Durasi ±1,5 menit.
 - Tidak menambah tombol menu: di layar judul hanya ada **ikon ? di pojok kanan atas** (keyboard: **H**) yang membuka **modal CARA MAIN** di atas layar judul (teks rata tengah): ringkasan 5 poin + ilustrasi jembatan + tombol **MAIN TUTORIAL** / **KEMBALI**. Klik di luar kotak = tutup.
+- **Pilih bahasa (Indonesia / Inggris):** ikon **globe** di kiri ikon ? (keyboard: **L**; label "H" tidak lagi ditampilkan, tombol H tetap membuka bantuan), atau **Pengaturan → BAHASA**. Keduanya membuka **modal BAHASA** berisi daftar bahasa (ditulis dalam bahasanya sendiri: BAHASA INDONESIA, ENGLISH), bahasa aktif ditandai titik. Pilih = langsung ganti lalu kembali ke layar asal; klik di luar kotak / Esc = tutup. Ikon globe & ? adalah glyph font setinggi 13 titik dengan garis 1 titik, jadi ukuran dan ketebalannya sama. Bawaan Indonesia; pilihan disimpan di perangkat. Semua teks ikut berganti: menu, panel, banner event, tutorial, prestasi, toast, tombol sentuh, kotak nama, dan KREDIT. Kamus ada di `js/i18n.js` (kunci = teks Indonesia, `t('MAIN')` → `PLAY`).
 - 6 langkah interaktif. Langkah berikutnya baru muncul setelah aksi dilakukan. Petunjuk ada di panel samping (menggantikan skor), dengan tombol keyboard **atau** tombol sentuh sesuai perangkat:
 
 | # | Langkah | Papan | Selesai saat |

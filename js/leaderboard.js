@@ -1,4 +1,5 @@
 import { store } from './util.js';
+import { t } from './i18n.js';
 
 // Klien leaderboard. Server utama = API pusat di sandtilt.vercel.app (satu papan untuk semua platform);
 // hanya deployment itu yang punya database. Deployment lain (Vercel lain, gameedukasi, itch.io, ...)
@@ -60,9 +61,9 @@ export function validName(name) { return NAME_RE.test(name.trim()); }
 export function formatDuration(sec) {
   sec = Math.max(0, Math.floor(sec));
   const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
-  if (d > 0) return `${d}H ${h}J`;
-  if (h > 0) return `${h}J ${m}M`;
-  return `${m}M`;
+  if (d > 0) return t('{d}H {h}J', { d, h });
+  if (h > 0) return t('{h}J {m}M', { h, m });
+  return t('{m}M', { m });
 }
 
 // Run (permainan yang dibuka di server) yang terikat pada hasil satu game.
@@ -126,7 +127,7 @@ export class Leaderboard {
   localBoard(tab) {
     const week = localWeekStart();
     const runs = store.get('runs', []).filter((r) => tab === 'alltime' || r.week === week);
-    const name = this.name || 'KAMU';
+    const name = this.name || t('KAMU');
     return { offline: true, tab, rows: runs.map((r) => ({ name, score: r.score, me: true })), mine: null };
   }
 
@@ -138,7 +139,7 @@ export class Leaderboard {
         offline: false, tab,
         rows: j.data.map((r) => ({ name: r.player_name, score: r.score, me: !!this.pid && r.player_id === this.pid })),
         mine: j.mine ? { name: j.mine.player_name, score: j.mine.score, rank: j.mine.rank } : null,
-        resetIn: j.reset_in_sec != null ? formatDuration(j.reset_in_sec) : '',
+        resetInSec: j.reset_in_sec != null ? j.reset_in_sec : null,   // diformat saat digambar (ikut bahasa)
       };
     } catch {
       return this.localBoard(tab);

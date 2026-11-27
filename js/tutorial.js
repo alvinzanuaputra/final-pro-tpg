@@ -1,4 +1,5 @@
 import { W, H, BLOCK, MAT_STONE, MAT_GUN } from './config.js';
+import { t } from './i18n.js';
 
 // Tutorial interaktif untuk pemain baru (±1,5 menit). Pemain belajar dengan mencoba langsung:
 // setiap langkah menampilkan petunjuk singkat dan baru lanjut setelah aksinya dilakukan.
@@ -212,11 +213,11 @@ export class Tutorial {
     const T = (k === 'stone' && (this.phase === 'demo' || this.phase === 'watch')) ? TEXT[`stone_${this.phase}`] : TEXT[k];
     const v = {
       n: this.step + 1, total: STEPS.length, key: k,
-      title: this.done ? 'BAGUS!' : T.title,
-      body: this.done ? T.good : this.retry ? `COBA LAGI! ${T.body}` : T.body,
+      title: t(this.done ? 'BAGUS!' : T.title),
+      body: this.done ? t(T.good) : this.retry ? t('COBA LAGI! {body}', { body: t(T.body) }) : t(T.body),
       // tiap tombol diberi tanda done kalau aksinya sudah dicoba; teks baris ikut pudar kalau semua tombolnya done
       keys: this.done ? [] : ((touch ? T.touch : T.keys) || []).map((row) => {
-        const parts = row.map((p) => (typeof p === 'object' && p.a ? { ...p, done: this.used.has(p.a) } : p));
+        const parts = row.map((p) => (typeof p === 'object' && p.a ? { ...p, done: this.used.has(p.a) } : typeof p === 'string' ? t(p) : p));
         const acts = parts.filter((p) => typeof p === 'object' && p.a);
         return { parts, done: acts.length > 0 && acts.every((p) => p.done) };
       }),

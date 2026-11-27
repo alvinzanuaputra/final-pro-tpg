@@ -17,7 +17,8 @@ const bars = (n: number) => Math.round(n * BAR);
 type Side = 'right' | 'left';                            // posisi GAME di layar; teks di sisi sebaliknya
 type Beat =
   | { kind: 'shot'; shot: string; from: number; bars: number; side: Side; textAt?: number;
-      closeup?: boolean; counter?: boolean; trophy?: { at: number; tier: 'silver' }; heartbeatUntil?: number; flashIn?: boolean }
+      closeup?: boolean; counter?: boolean; trophy?: { at: number; tier: 'silver' }; heartbeatUntil?: number; flashIn?: boolean;
+      accent?: string }   // warna baris kedua teks (default aksen kuning)
   | { kind: 'card'; bars: number }
   | { kind: 'outro'; bars: number };
 
@@ -41,7 +42,7 @@ const BEATS: Beat[] = [
   { kind: 'shot', shot: 'force', from: 0, bars: fit(0, lastHit('force') + sec(0.6)), side: 'left', textAt: 4 },
   { kind: 'card', bars: 1.5 },
   { kind: 'shot', shot: 'save', from: 0, bars: fit(0, lastHit('save') + AFTER), side: 'right', textAt: 2,
-    heartbeatUntil: ev('save', 'clear')[0], flashIn: true },
+    heartbeatUntil: ev('save', 'clear')[0], flashIn: true, accent: C.danger },   // merah = warna garis bahaya di game
   { kind: 'outro', bars: 2.5 },
 ];
 
@@ -153,7 +154,7 @@ const ShotBeat: React.FC<{ b: Extract<Beat, { kind: 'shot' }>; lang: Lang }> = (
       <Footage name={b.shot} frames={meta.frames} startAt={b.from} cam={camFor(b)} height={1040} />
       {text && (
         <Sequence from={b.textAt || 0} durationInFrames={len - (b.textAt || 0)}>
-          <SlamText text={text} colors={[C.text, C.accent]} x={textX(b.side)} y={b.counter ? 440 : 540} px={textPx(text)}
+          <SlamText text={text} colors={[C.text, b.accent || C.accent]} x={textX(b.side)} y={b.counter ? 440 : 540} px={textPx(text)}
             align="left" hold={len - (b.textAt || 0) - 8} />
         </Sequence>
       )}

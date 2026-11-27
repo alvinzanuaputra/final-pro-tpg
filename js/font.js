@@ -68,9 +68,48 @@ const TEXT = compile({
   '←': '00000 00100 01000 11111 01000 00100 00000', '→': '00000 00100 00010 11111 00010 00100 00000',
   '↑': '00100 01110 10101 00100 00100 00100 00000', '↓': '00000 00100 00100 00100 10101 01110 00100',
 }, 5);
-// Glyph lebar (lebih dari 5 kolom): simbol spasi untuk tombol spasi kecil.
-const WIDE = { '␣': 11 };
+// Glyph lebar (lebih dari 5 kolom): simbol spasi untuk tombol spasi kecil, serta ikon pojok layar judul:
+// globe 13x13 (pilih bahasa: lingkaran, dua garis bujur melengkung, khatulistiwa, dua garis lintang)
+// dan tanda tanya 9x13 (bantuan). Keduanya setinggi ICON_ROWS dengan garis 1 titik, jadi ukuran &
+// ketebalannya sama. Renderer menggesernya ke atas supaya tetap di tengah tombol.
+const WIDE = { '␣': 11, '◎': 13, '⍰': 9 };
+export const ICON_ROWS = 13;
+const art = (rows) => rows.map((r) => r.replace(/#/g, '1').replace(/\./g, '0')).join(' ');
 Object.assign(TEXT, compile({ '␣': '00000000000 00000000000 00000000000 00000000000 10000000001 10000000001 11111111111' }, 11));
+Object.assign(TEXT, compile({
+  '◎': art([
+    '.....###.....',
+    '...##.#.##...',
+    '..#..#.#..#..',
+    '.###########.',
+    '.#..#...#..#.',
+    '#...#...#...#',
+    '#############',
+    '#...#...#...#',
+    '.#..#...#..#.',
+    '.###########.',
+    '..#..#.#..#..',
+    '...##.#.##...',
+    '.....###.....',
+  ]),
+}, 13));
+Object.assign(TEXT, compile({
+  '⍰': art([
+    '..#####..',
+    '.#.....#.',
+    '#.......#',
+    '#.......#',
+    '........#',
+    '.......#.',
+    '......#..',
+    '.....#...',
+    '....#....',
+    '....#....',
+    '.........',
+    '....#....',
+    '....#....',
+  ]),
+}, 9));
 const adv = (ch) => (WIDE[ch] ?? 5) + 1;
 
 export const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;

@@ -1,6 +1,6 @@
 /* SandTilt — bundel otomatis dari js/*.js (JANGAN diedit langsung).
    Dibuat oleh: node tools/build-bundle.mjs
-   Urutan module: config, util, sim, pieces, game, font, render, input, audio, achievements, leaderboard, tutorial, main */
+   Urutan module: config, util, sim, pieces, game, font, i18n, leaderboard, render, input, audio, achievements, tutorial, main */
 (function () {
 'use strict';
 const __mod = {};
@@ -1331,9 +1331,48 @@ const TEXT = compile({
   '←': '00000 00100 01000 11111 01000 00100 00000', '→': '00000 00100 00010 11111 00010 00100 00000',
   '↑': '00100 01110 10101 00100 00100 00100 00000', '↓': '00000 00100 00100 00100 10101 01110 00100',
 }, 5);
-// Glyph lebar (lebih dari 5 kolom): simbol spasi untuk tombol spasi kecil.
-const WIDE = { '␣': 11 };
+// Glyph lebar (lebih dari 5 kolom): simbol spasi untuk tombol spasi kecil, serta ikon pojok layar judul:
+// globe 13x13 (pilih bahasa: lingkaran, dua garis bujur melengkung, khatulistiwa, dua garis lintang)
+// dan tanda tanya 9x13 (bantuan). Keduanya setinggi ICON_ROWS dengan garis 1 titik, jadi ukuran &
+// ketebalannya sama. Renderer menggesernya ke atas supaya tetap di tengah tombol.
+const WIDE = { '␣': 11, '◎': 13, '⍰': 9 };
+const ICON_ROWS = 13;
+const art = (rows) => rows.map((r) => r.replace(/#/g, '1').replace(/\./g, '0')).join(' ');
 Object.assign(TEXT, compile({ '␣': '00000000000 00000000000 00000000000 00000000000 10000000001 10000000001 11111111111' }, 11));
+Object.assign(TEXT, compile({
+  '◎': art([
+    '.....###.....',
+    '...##.#.##...',
+    '..#..#.#..#..',
+    '.###########.',
+    '.#..#...#..#.',
+    '#...#...#...#',
+    '#############',
+    '#...#...#...#',
+    '.#..#...#..#.',
+    '.###########.',
+    '..#..#.#..#..',
+    '...##.#.##...',
+    '.....###.....',
+  ]),
+}, 13));
+Object.assign(TEXT, compile({
+  '⍰': art([
+    '..#####..',
+    '.#.....#.',
+    '#.......#',
+    '#.......#',
+    '........#',
+    '.......#.',
+    '......#..',
+    '.....#...',
+    '....#....',
+    '....#....',
+    '.........',
+    '....#....',
+    '....#....',
+  ]),
+}, 9));
 const adv = (ch) => (WIDE[ch] ?? 5) + 1;
 
 const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
@@ -1360,14 +1399,499 @@ function drawText(ctx, str, x, y, color, px, align = 'left') {
   }
 }
 
-return { drawBlockText, blockTextWidth, GLYPH_W, GLYPH_H, ADVANCE, textWidthPx, drawText };
+return { drawBlockText, blockTextWidth, ICON_ROWS, GLYPH_W, GLYPH_H, ADVANCE, textWidthPx, drawText };
+})();
+
+// ===================================================================== js/i18n.js
+__mod["i18n"] = (function () {
+const { store } = __mod["util"];
+
+// Ganti bahasa: Indonesia (bawaan) ↔ Inggris.
+// Kunci terjemahan = teks Indonesia aslinya, jadi kode tetap mudah dibaca: t('MAIN') → 'PLAY'.
+// Bagian yang berubah ditulis {nama} dan diisi lewat vars: t('TERBAIK: {n}', { n: 120 }).
+// Teks yang tidak ada di kamus tampil apa adanya (nama pemain, angka, dll.).
+
+const LANGS = ['id', 'en'];
+const LANG_NAMES = { id: 'INDONESIA', en: 'ENGLISH' };
+
+let lang = LANGS.includes(store.get('lang', 'id')) ? store.get('lang', 'id') : 'id';
+const listeners = [];
+
+function getLang() { return lang; }
+function setLang(l) {
+  if (!LANGS.includes(l) || l === lang) return;
+  lang = l;
+  store.set('lang', l);
+  for (const fn of listeners) fn(l);
+}
+function nextLang() { setLang(LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length]); return lang; }
+function onLangChange(fn) { listeners.push(fn); }
+
+function t(key, vars) {
+  let s = lang === 'en' && EN[key] !== undefined ? EN[key] : key;
+  if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined ? vars[k] : m));
+  return s;
+}
+
+// Teks di index.html (tombol sentuh, kotak nama, kredit). Elemen bertanda data-i18n="kunci" diisi
+// textContent; data-i18n-aria / data-i18n-ph / data-i18n-alt mengisi aria-label / placeholder / alt.
+// Teks Indonesia aslinya disimpan di elemen saat pertama kali dibaca, lalu dipakai sebagai kunci.
+function applyDom(root = document) {
+  document.documentElement.lang = lang;
+  for (const [attr, prop] of [['i18n', null], ['i18nAria', 'aria-label'], ['i18nPh', 'placeholder'], ['i18nAlt', 'alt']]) {
+    const sel = `[data-${attr.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}]`;
+    for (const el of root.querySelectorAll(sel)) {
+      const keyAttr = attr + 'Key';
+      if (!el.dataset[keyAttr]) el.dataset[keyAttr] = prop ? el.getAttribute(prop) : el.innerHTML.trim();
+      const key = el.dataset[keyAttr];
+      if (prop) el.setAttribute(prop, t(key));
+      else el.innerHTML = t(key);
+    }
+  }
+}
+
+const EN = {
+  // ---------------------------------------------------------------- layar judul & menu
+  'KLIK / TAP UNTUK MULAI': 'CLICK / TAP TO START',
+  'TETRIS PASIR YANG BISA MIRING': 'SAND TETRIS THAT TILTS',
+  'TERBAIK: {n}': 'BEST: {n}',
+  'PEMAIN: {name}': 'PLAYER: {name}',
+  'GESER': 'MOVE',
+  'PUTAR': 'ROTATE',
+  'JATUH': 'DROP',
+  'TAHAN': 'HOLD',
+  'MIRING': 'TILT',
+  'JEDA': 'PAUSE',
+  'SUARA: MATI': 'SOUND: OFF',
+  'MUSIK: MATI': 'MUSIC: OFF',
+  'MAIN': 'PLAY',
+  'PERINGKAT': 'LEADERBOARD',
+  'PRESTASI': 'ACHIEVEMENTS',
+  'PENGATURAN': 'SETTINGS',
+  'KREDIT': 'CREDITS',
+  'MAIN TUTORIAL': 'PLAY TUTORIAL',
+  'LEWATI TUTORIAL': 'SKIP TUTORIAL',
+  'LANJUT': 'RESUME',
+  'ULANG': 'RESTART',
+  'MENU UTAMA': 'MAIN MENU',
+  'KEMBALI': 'BACK',
+  'NAMA: {name}': 'NAME: {name}',
+  'ISI NAMA': 'SET NAME',
+  'SUARA: {v}': 'SOUND: {v}',
+  'SEMUA': 'ALL',
+  'EFEK SAJA': 'SFX ONLY',
+  'MATI': 'OFF',
+  'TEMA: {v}': 'THEME: {v}',
+  'BAHASA: {v}': 'LANGUAGE: {v}',
+  'BAHASA': 'LANGUAGE',
+  'KLASIK': 'CLASSIC',
+  'SENJA': 'DUSK',
+  'KONTRAS': 'CONTRAST',
+  'KERTAS': 'PAPER',
+  '{n} TEMA LAGI: HADIAH PRESTASI': '{n} MORE THEMES FROM TROPHIES',
+
+  // ---------------------------------------------------------------- CARA MAIN
+  'CARA MAIN': 'HOW TO PLAY',
+  'TAHAN L / R': 'HOLD L / R',
+  'TAHAN Q / E': 'HOLD Q / E',
+  'BALOK YANG MENDARAT HANCUR JADI PASIR.': 'BLOCKS CRUMBLE INTO SAND WHEN THEY LAND.',
+  'SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN: JEMBATAN HILANG, DAPAT SKOR.': 'LINK ONE COLOR FROM THE LEFT WALL TO THE RIGHT: THE BRIDGE CLEARS FOR POINTS.',
+  '{tilt} UNTUK MEMIRINGKAN PAPAN. PASIR IKUT MENGALIR.': '{tilt} TO TILT THE BOARD. THE SAND FLOWS WITH IT.',
+  'MESIU MELEDAK SAAT KENA CLEAR. BATU KAKU, TIDAK LONGSOR.': 'GUNPOWDER EXPLODES WHEN CLEARED. STONE IS RIGID AND NEVER SLIDES.',
+  'PASIR LEWAT GARIS MERAH ATAS = KALAH.': 'SAND OVER THE TOP RED LINE = GAME OVER.',
+
+  // ---------------------------------------------------------------- panel & papan
+  'SKOR': 'SCORE',
+  'TERBAIK': 'BEST',
+  'BATU': 'STONE',
+  'MESIU': 'POWDER',
+  'TAHAN Q/E MIRING': 'HOLD Q/E TILT',
+  'P JEDA  M SUARA': 'P PAUSE  M SOUND',
+  'GEMPA': 'QUAKE',
+  'ANGIN': 'WIND',
+  'PAPAN MIRING': 'BOARD TILT',
+  'GEMPA!': 'QUAKE!',
+  'DALAM {n}': 'IN {n}',
+  'TAHAN {k} MELAWAN': 'HOLD {k} TO RESIST',
+  'PIECE TERDORONG': 'PIECE PUSHED',
+  'BATU HANCUR!': 'STONE SMASHED!',
+  'LEDAKAN!': 'EXPLOSION!',
+
+  // ---------------------------------------------------------------- tutorial
+  'MENU: LEWATI': 'MENU: SKIP',
+  'ESC: LEWATI': 'ESC: SKIP',
+  'BAGUS!': 'NICE!',
+  'COBA LAGI! {body}': 'TRY AGAIN! {body}',
+  'GERAK': 'MOVE',
+  'COBA SEMUA TOMBOL DI BAWAH.': 'TRY EVERY KEY BELOW.',
+  'BALIK': 'REVERSE',
+  'MUDAH, KAN?': 'EASY, RIGHT?',
+  'JATUHKAN': 'DROP',
+  'COBA TURUN PELAN DAN JATUH CEPAT. BALOK YANG MENDARAT JADI PASIR.': 'TRY A SOFT DROP AND A HARD DROP. LANDED BLOCKS TURN INTO SAND.',
+  'PELAN': 'SOFT',
+  'JADI PASIR!': 'SAND!',
+  'JEMBATAN': 'BRIDGE',
+  'SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN. ISI CELAH DI BAWAH PANAH!': 'LINK ONE COLOR FROM THE LEFT WALL TO THE RIGHT. FILL THE GAP UNDER THE ARROW!',
+  'JEMBATAN HILANG = SKOR!': 'BRIDGE CLEARED = POINTS!',
+  'PASIR BELUM SAMPAI DINDING KANAN. TAHAN MIRING KE KANAN!': 'THE SAND DOES NOT REACH THE RIGHT WALL. HOLD TILT RIGHT!',
+  'MIRING ADA BATASNYA, PAKAI SEPERLUNYA.': 'TILT IS LIMITED, USE IT WISELY.',
+  'PASIR...': 'SAND...',
+  'LIHAT: BALOK PASIR DIJATUHKAN DI ATAS LUBANG.': 'WATCH: A SAND BLOCK DROPS OVER THE PIT.',
+  'PASIR RONTOK KE LUBANG. JEMBATAN GAGAL!': 'THE SAND SPILLS INTO THE PIT. NO BRIDGE!',
+  'SEKARANG BALOK BATU. JATUHKAN DI ATAS LUBANG YANG SAMA!': 'NOW A STONE BLOCK. DROP IT OVER THE SAME PIT!',
+  'PASIR RONTOK, BATU TETAP UTUH: BATU KAKU!': 'SAND SPILLS, STONE HOLDS: STONE IS RIGID!',
+  'BINTIK API = MESIU. KENA CLEAR, MELEDAK, BATU PUN HANCUR. ISI CELAHNYA, LALU LIHAT KOTAK KIRI!': 'FIERY SPECKS = GUNPOWDER. A CLEAR SETS IT OFF AND EVEN STONE BREAKS. FILL THE GAP, THEN WATCH THE LEFT BOX!',
+  'BOOM! LEDAKAN = SKOR TAMBAHAN.': 'BOOM! EXPLOSIONS = BONUS POINTS.',
+  'SIAP MAIN!': 'READY!',
+  'JANGAN BIARKAN PASIR LEWAT GARIS MERAH ATAS.': 'NEVER LET THE SAND CROSS THE TOP RED LINE.',
+  'GANGGUAN (GEMPA, ANGIN, PAPAN MIRING) SELALU DIPERINGATKAN 3 DETIK SEBELUMNYA.': 'HAZARDS (QUAKE, WIND, BOARD TILT) ARE ALWAYS ANNOUNCED 3 SECONDS AHEAD.',
+  'MAIN SEKARANG': 'PLAY NOW',
+
+  // ---------------------------------------------------------------- game over & peringkat
+  'CHAIN TERBAIK': 'BEST CHAIN',
+  'BUTIR DIHAPUS': 'GRAINS CLEARED',
+  'DURASI': 'TIME',
+  '{n} DTK': '{n} SEC',
+  'REKOR PRIBADI BARU!': 'NEW PERSONAL BEST!',
+  '{n} PRESTASI BARU': '{n} NEW ACHIEVEMENTS',
+  'MAIN LAGI': 'PLAY AGAIN',
+  'MINGGU INI': 'THIS WEEK',
+  'SEPANJANG MASA': 'ALL TIME',
+  'MEMUAT...': 'LOADING...',
+  'BELUM ADA SKOR': 'NO SCORES YET',
+  'JADILAH YANG PERTAMA!': 'BE THE FIRST!',
+  'KAMU': 'YOU',
+  'OFFLINE - SKOR LOKAL': 'OFFLINE - LOCAL SCORES',
+  'RESET DALAM {t}': 'RESETS IN {t}',
+  '{d}H {h}J': '{d}D {h}H',
+  '{h}J {m}M': '{h}H {m}M',
+  '{m}M': '{m}M',
+  'MODE UJI - SKOR TIDAK DISIMPAN': 'TEST MODE - SCORE NOT SAVED',
+  'ISI NAMA UNTUK PERINGKAT': 'SET A NAME TO GET RANKED',
+  'MENGIRIM SKOR...': 'SENDING SCORE...',
+  'REKOR MINGGU INI! #{n}': 'WEEKLY BEST! #{n}',
+  'PERINGKAT MINGGU INI #{n}': 'THIS WEEK: #{n}',
+  'OFFLINE - DISIMPAN LOKAL': 'OFFLINE - SAVED LOCALLY',
+  'NAMA SUDAH DIPAKAI': 'NAME ALREADY TAKEN',
+  'TERLALU CEPAT, COBA LAGI': 'TOO FAST, TRY AGAIN',
+  'SKOR TIDAK TERCATAT': 'SCORE NOT RECORDED',
+  'SKOR TIDAK DIKIRIM': 'SCORE NOT SENT',
+
+  // ---------------------------------------------------------------- prestasi
+  'TROFI {a}/{b}': 'TROPHIES {a}/{b}',
+  'RAHASIA': 'SECRET',
+  'HADIAH: {r}': 'REWARD: {r}',
+  'TROFI PERUNGGU!': 'BRONZE TROPHY!',
+  'TROFI PERAK!': 'SILVER TROPHY!',
+  'TROFI EMAS!': 'GOLD TROPHY!',
+  'TROFI LEGENDA!': 'LEGEND TROPHY!',
+  'TROFI RAHASIA!': 'SECRET TROPHY!',
+  'PRESTASI!': 'ACHIEVEMENT!',
+  'HADIAH TERBUKA': 'REWARD UNLOCKED',
+  '{r} DI PENGATURAN': '{r} IN SETTINGS',
+  'MURID TELADAN': 'MODEL STUDENT',
+  'SELESAIKAN TUTORIAL': 'FINISH THE TUTORIAL',
+  'JEMBATAN PERTAMA': 'FIRST BRIDGE',
+  'CLEAR PERTAMA KALI': 'CLEAR FOR THE FIRST TIME',
+  'REAKSI BERANTAI': 'CHAIN REACTION',
+  'CAPAI CHAIN X3': 'REACH CHAIN X3',
+  'AHLI MIRING': 'TILT MASTER',
+  'CLEAR < 1 DETIK SETELAH MIRING': 'CLEAR < 1 SEC AFTER A TILT',
+  'NYARIS!': 'CLOSE CALL!',
+  'CLEAR SAAT DEKAT GARIS BAHAYA': 'CLEAR NEAR THE DANGER LINE',
+  'PAPAN BERSIH': 'CLEAN SWEEP',
+  'KOSONGKAN PAPAN SETELAH CLEAR': 'EMPTY THE BOARD WITH A CLEAR',
+  'BOOM!': 'BOOM!',
+  'LEDAKKAN MESIU PERTAMA KALI': 'SET OFF YOUR FIRST GUNPOWDER',
+  'PENGHANCUR BATU': 'STONE BREAKER',
+  'HANCURKAN BATU DENGAN LEDAKAN': 'BREAK STONE WITH AN EXPLOSION',
+  'TANGAN KOSONG': 'NO HANDS',
+  'LEVEL 5 TANPA MIRING': 'LEVEL 5 WITHOUT TILTING',
+  'TAHAN BANTING': 'TOUGH AS NAILS',
+  'BERTAHAN 5 EVENT SEKALI MAIN': 'SURVIVE 5 HAZARDS IN ONE RUN',
+  'MARATON': 'MARATHON',
+  'CAPAI LEVEL 15': 'REACH LEVEL 15',
+  'BADAI PASIR': 'SANDSTORM',
+  'CAPAI CHAIN X5': 'REACH CHAIN X5',
+  'GOYANG DUMANG!': 'SHAKE IT TO THE MAX!',
+  'MIRING KIRI-KANAN 6X < 2 DETIK': 'TILT LEFT-RIGHT 6X IN < 2 SEC',
+  'LAWAN ARUS': 'AGAINST THE FLOW',
+  'TAHAN MIRING LAWAN ARAH PAPAN': 'TILT AGAINST A BOARD TILT',
+  'TEMA KERTAS': 'PAPER THEME',
+  'TEMA NEON': 'NEON THEME',
+  'TEMA RETRO': 'RETRO THEME',
+
+  // ---------------------------------------------------------------- toast & lainnya
+  'MODE UJI': 'TEST MODE',
+  'SKOR DAN PRESTASI TIDAK DISIMPAN': 'SCORES AND TROPHIES NOT SAVED',
+  'NAMA DISIMPAN': 'NAME SAVED',
+  'SUARA': 'SOUND',
+  'MUSIK + EFEK': 'MUSIC + SFX',
+  'MATERIAL BARU: MESIU': 'NEW MATERIAL: GUNPOWDER',
+  'MELEDAK SAAT KENA CLEAR': 'EXPLODES WHEN CLEARED',
+  'MATERIAL BARU: BATU': 'NEW MATERIAL: STONE',
+  'BERAT, TIDAK LONGSOR': 'HEAVY, NEVER SLIDES',
+  'SKOR TERTUNDA': 'PENDING SCORE',
+  'MASUK PERINGKAT': 'NOW ON THE BOARD',
+  'WEBSITE (OFFLINE)': 'WEBSITE (OFFLINE)',
+
+  // ---------------------------------------------------------------- kotak nama (HTML)
+  'NAMA PEMAIN': 'PLAYER NAME',
+  'Nama ini tampil di papan peringkat.': 'This name appears on the leaderboard.',
+  '2-16 karakter': '2-16 characters',
+  'SIMPAN': 'SAVE',
+  'LEWATI': 'SKIP',
+  'Nama itu sudah dipakai pemain lain.': 'That name is already taken by another player.',
+  'Server peringkat belum siap.': 'The leaderboard server is not ready yet.',
+  'Nama tidak valid.': 'Invalid name.',
+  'Nama 2-16 karakter: huruf, angka, spasi, _ atau -': 'Name must be 2-16 characters: letters, numbers, space, _ or -',
+  'Memeriksa nama...': 'Checking name...',
+  'Nama "{name}" sudah dipakai pemain lain. Pilih nama baru supaya skor tertundamu tersimpan.': 'The name "{name}" is already taken. Pick a new name so your pending score is saved.',
+  'Isi nama supaya skor tertundamu tersimpan.': 'Enter a name so your pending score is saved.',
+
+  // ---------------------------------------------------------------- tombol sentuh & kredit (HTML)
+  'TURUN': 'DOWN',
+  'MENU': 'MENU',
+  'SandTilt - tetris pasir': 'SandTilt - sand tetris',
+  'Kontrol kiri': 'Left controls',
+  'Kontrol kanan': 'Right controls',
+  'Arah': 'Direction',
+  'Miring kiri (tahan)': 'Tilt left (hold)',
+  'Miring kanan (tahan)': 'Tilt right (hold)',
+  'Jatuh instan': 'Hard drop',
+  'Geser kiri': 'Move left',
+  'Geser kanan': 'Move right',
+  'Turun pelan': 'Soft drop',
+  'Putar balik': 'Rotate back',
+  'Putar': 'Rotate',
+  'Menu (jeda &amp; pengaturan)': 'Menu (pause &amp; settings)',
+  'Menu (jeda & pengaturan)': 'Menu (pause & settings)',
+  '<b>SANDTILT</b> · tetris pasir yang bisa miring': '<b>SANDTILT</b> · sand tetris that tilts',
+  'Final Project Teknik Pengembangan Game (TPG) 2026': 'Final Project, Game Development Techniques course (TPG) 2026',
+  'PEMBUAT': 'MADE BY',
+  'ASET': 'ASSETS',
+  'Foto Alvin Zanua Putra': 'Photo of Alvin Zanua Putra',
+  'Foto Muhammad Azhar Aziz': 'Photo of Muhammad Azhar Aziz',
+  '<b>Efek suara</b> - Kenney: Impact, Interface, Sci-fi Sounds, Digital Audio, Music Jingles (kenney.nl, CC0)': '<b>Sound effects</b> - Kenney: Impact, Interface, Sci-fi Sounds, Digital Audio, Music Jingles (kenney.nl, CC0)',
+  '<b>Font pixel</b> - Kenney Fonts (kenney.nl, CC0)': '<b>Pixel font</b> - Kenney Fonts (kenney.nl, CC0)',
+  '<b>Soundtrack chiptune &amp; ikon trofi</b> - dibuat tim SandTilt': '<b>Chiptune soundtrack &amp; trophy icons</b> - made by the SandTilt team',
+  '<b>Suara angin &amp; pasir meluncur</b> - dibuat tim dengan ffmpeg': '<b>Wind &amp; sliding sand sounds</b> - made by the team with ffmpeg',
+};
+
+return { LANGS, LANG_NAMES, getLang, setLang, nextLang, onLangChange, t, applyDom };
+})();
+
+// ===================================================================== js/leaderboard.js
+__mod["leaderboard"] = (function () {
+const { store } = __mod["util"];
+const { t } = __mod["i18n"];
+
+// Klien leaderboard. Server utama = API pusat di sandtilt.vercel.app (satu papan untuk semua platform);
+// hanya deployment itu yang punya database. Deployment lain (Vercel lain, gameedukasi, itch.io, ...)
+// cuma tampilan yang memanggil API pusat, jadi tidak perlu database sendiri.
+// Di gameedukasi, kalau server pusat tidak bisa dihubungi, pindah ke api/leaderboard.php lokal.
+// Tanpa server sama sekali → mode offline (skor disimpan di localStorage).
+//
+// Uji coba: tambahkan ?lb=central | php | off di URL untuk memaksa satu server.
+const CENTRAL_API = 'https://sandtilt.vercel.app/api/leaderboard';
+const LOCAL_PHP_API = 'api/leaderboard.php';
+const NAME_RE = /^[A-Za-z0-9 _-]{2,16}$/;
+
+// Daftar server yang dicoba berurutan untuk halaman ini.
+function apiList() {
+  const force = new URLSearchParams(location.search).get('lb');
+  if (force === 'central') return [CENTRAL_API];
+  if (force === 'php') return [LOCAL_PHP_API];
+  if (force === 'off') return [];
+  const host = location.hostname;
+  if (location.protocol === 'file:') return [];                              // dibuka dari disk: offline
+  if (host === new URL(CENTRAL_API).hostname) return ['/api/leaderboard'];   // server pusat itu sendiri
+  if (/\.vercel\.app$/.test(host)) return [CENTRAL_API];                     // Vercel lain (sandtilt-azhar, preview): tanpa PHP
+  if (host === 'localhost' || host === '127.0.0.1') return [LOCAL_PHP_API];  // tes lokal tidak mengotori papan pusat
+  return [CENTRAL_API, LOCAL_PHP_API];                                       // gameedukasi & platform lain
+}
+
+// Jawaban server yang berarti "server ini belum bisa dipakai" → coba server berikutnya.
+const SERVER_DOWN = new Set(['NO_DB', 'SERVER_ERROR', 'FORBIDDEN_ORIGIN']);
+
+function makeUuid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  const b = new Uint8Array(16);
+  (window.crypto || {}).getRandomValues ? crypto.getRandomValues(b) : b.forEach((_, i) => { b[i] = Math.random() * 256; });
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// Senin minggu ini (tanggal lokal) — hanya untuk mode offline. Mode online memakai tanggal dari server.
+function localWeekStart() {
+  const d = new Date();
+  const day = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - day);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function request(url, opts = {}, timeout = 5000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeout);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal, cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  } finally { clearTimeout(timer); }
+}
+
+function validName(name) { return NAME_RE.test(name.trim()); }
+
+function formatDuration(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return t('{d}H {h}J', { d, h });
+  if (h > 0) return t('{h}J {m}M', { h, m });
+  return t('{m}M', { m });
+}
+
+// Run (permainan yang dibuka di server) yang terikat pada hasil satu game.
+const runOf = new WeakMap();
+const NO_RUN = Promise.resolve({ error: 'offline' });
+
+class Leaderboard {
+  constructor() {
+    // Token rahasia pemain (disimpan dengan kunci lama 'uuid' supaya pemain lama tetap dikenali).
+    // Tidak pernah ditampilkan: papan peringkat hanya memakai public id (pid) dari server.
+    this.token = store.get('uuid');
+    if (!this.token) { this.token = makeUuid(); store.set('uuid', this.token); }
+    this.pid = store.get('pid', '');
+    this.name = store.get('name', '');
+    this.apis = apiList();
+    this.runPromise = NO_RUN;
+  }
+
+  setName(name) { this.name = name.trim(); store.set('name', this.name); }
+  setPid(pid) { if (pid && pid !== this.pid) { this.pid = pid; store.set('pid', pid); } }
+
+  // Panggil server berurutan. Server yang mati/belum siap dilewati; yang berhasil dipakai duluan
+  // berikutnya. only = paksa satu server (run hanya berlaku di server yang membukanya).
+  async call(action, { body, query = {} } = {}, only = null) {
+    const list = only ? [only] : this.apis;
+    let lastErr = new Error('offline');
+    for (const api of list) {
+      const qs = new URLSearchParams({ action, ...query });
+      const opts = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {};
+      try {
+        const j = await request(`${api}?${qs}`, opts);
+        if (!j || typeof j !== 'object') throw new Error('bukan JSON');
+        if (!j.success && SERVER_DOWN.has(j.code)) throw new Error(j.code);
+        if (!only && api !== this.apis[0]) this.apis = [api, ...this.apis.filter((a) => a !== api)];
+        if (j.player_id) this.setPid(j.player_id);
+        return { j, api };
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr;
+  }
+
+  // Dipanggil saat game dimulai: server mencatat waktu mulai; skor nanti hanya diterima untuk run ini.
+  startRun() {
+    if (!this.apis.length) { this.runPromise = NO_RUN; return; }
+    this.runPromise = this.call('start_run', { body: { token: this.token } })
+      .then(({ j, api }) => (j.success ? { id: j.run_id, api } : { error: j.code || 'gagal' }))
+      .catch(() => ({ error: 'offline' }));
+  }
+
+  // Simpan juga di lokal: untuk mode offline & antrean kirim ulang. Dipanggil saat game selesai,
+  // sekaligus mengikat run game ini ke hasilnya (game berikutnya membuka run baru).
+  saveLocal(stats) {
+    runOf.set(stats, this.runPromise);
+    this.runPromise = NO_RUN;
+    const runs = store.get('runs', []);
+    runs.push({ week: localWeekStart(), score: stats.score, chain: stats.bestChain, at: Date.now() });
+    runs.sort((a, b) => b.score - a.score);
+    store.set('runs', runs.slice(0, 50));
+  }
+
+  localBoard(tab) {
+    const week = localWeekStart();
+    const runs = store.get('runs', []).filter((r) => tab === 'alltime' || r.week === week);
+    const name = this.name || t('KAMU');
+    return { offline: true, tab, rows: runs.map((r) => ({ name, score: r.score, me: true })), mine: null };
+  }
+
+  async get(tab) {
+    try {
+      const { j } = await this.call('get', { query: { tab, ...(this.pid ? { pid: this.pid } : {}) } });
+      if (!j.success) throw new Error(j.message || 'gagal');
+      return {
+        offline: false, tab,
+        rows: j.data.map((r) => ({ name: r.player_name, score: r.score, me: !!this.pid && r.player_id === this.pid })),
+        mine: j.mine ? { name: j.mine.player_name, score: j.mine.score, rank: j.mine.rank } : null,
+        resetInSec: j.reset_in_sec != null ? j.reset_in_sec : null,   // diformat saat digambar (ikut bahasa)
+      };
+    } catch {
+      return this.localBoard(tab);
+    }
+  }
+
+  // Melempar error kalau semua server tidak bisa dihubungi (pemanggil menganggapnya offline).
+  async claimName(name) {
+    const { j } = await this.call('claim_name', { body: { token: this.token, player_name: name.trim() } });
+    return j;
+  }
+
+  async submit(stats) {
+    const run = stats.run || await (runOf.get(stats) || NO_RUN);
+    if (!run.id) {
+      if (run.error === 'offline') return { ok: false, offline: true };
+      return { ok: false, code: run.error === 'RATE_LIMIT' ? 'RATE_LIMIT' : 'NO_RUN' };
+    }
+    const body = {
+      token: this.token, player_name: this.name, run_id: run.id,
+      score: stats.score, max_chain: stats.bestChain, level: stats.level,
+      clears: stats.clears, duration_sec: stats.duration,
+    };
+    try {
+      const { j } = await this.call('submit', { body }, run.api);
+      if (!j.success) return { ok: false, code: j.code, message: j.message };
+      this.clearPending(stats);
+      return { ok: true, newBest: j.new_best, rankWeekly: j.rank_weekly, rankAll: j.rank_alltime };
+    } catch {
+      this.queuePending({ ...stats, run });
+      return { ok: false, offline: true };
+    }
+  }
+
+  // Skor yang gagal terkirim disimpan (hanya yang terbaik, beserta run-nya) dan dicoba lagi nanti.
+  queuePending(stats) {
+    const p = store.get('pending');
+    if (!p || stats.score > p.score) store.set('pending', { ...stats, week: localWeekStart() });
+  }
+  clearPending(stats) {
+    const p = store.get('pending');
+    if (p && p.score <= stats.score) store.set('pending', null);
+  }
+  // Kirim ulang skor tertunda. Hasil: 'sent' (terkirim), 'name' (perlu nama baru: nama lama ternyata
+  // dipakai pemain lain; skor TETAP disimpan, run-nya belum terpakai di server), atau null.
+  async flushPending() {
+    const p = store.get('pending');
+    if (p && (p.week !== localWeekStart() || !p.run)) { store.set('pending', null); return null; }
+    if (!p) return null;
+    if (!this.name) return 'name';
+    const r = await this.submit(p);
+    if (r.code === 'NAME_TAKEN' || r.code === 'BAD_NAME') return 'name';
+    if (r.ok || !r.offline) store.set('pending', null);
+    return r.ok ? 'sent' : null;
+  }
+}
+
+return { CENTRAL_API, validName, formatDuration, Leaderboard };
 })();
 
 // ===================================================================== js/render.js
 __mod["render"] = (function () {
 const { W, H, BLOCK, CFG, MAT_STONE, MAT_GUN, isBossLevel } = __mod["config"];
 const { SHAPES } = __mod["pieces"];
-const { drawText, textWidthPx, drawBlockText, blockTextWidth } = __mod["font"];
+const { drawText, textWidthPx, drawBlockText, blockTextWidth, ICON_ROWS } = __mod["font"];
+const { t } = __mod["i18n"];
+const { formatDuration } = __mod["leaderboard"];
 
 // Gambar pixel art (papan, pasir, kotak UI) di kanvas kecil 160x176 lalu diperbesar dengan skala bulat.
 // Teks digambar terpisah langsung di resolusi layar dengan font 5x7 → lebih kecil & mudah dibaca.
@@ -1539,7 +2063,7 @@ class Renderer {
         }
       }
       const [cx, cy] = d.centers[0] || [W / 2, H / 2];
-      this.addFloat(d.stones > 0 ? 'BATU HANCUR!' : 'LEDAKAN!', BX + cx, BY + cy - 10, '#ffb347', 1.2);
+      this.addFloat(t(d.stones > 0 ? 'BATU HANCUR!' : 'LEDAKAN!'), BX + cx, BY + cy - 10, '#ffb347', 1.2);
     });
   }
 
@@ -1684,7 +2208,7 @@ class Renderer {
     ctx.translate(sx, sy);
     this.ox = sx; this.oy = sy;
 
-    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'start' || ui.screen === 'help' || (ui.screen === 'board' && !ui.fromOver)) {
+    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'start' || ui.screen === 'help' || ui.screen === 'lang' || (ui.screen === 'board' && !ui.fromOver)) {
       this.drawRain(ctx, dt);
     } else {
       this.drawBoard(ctx, g);
@@ -1718,6 +2242,7 @@ class Renderer {
       case 'settings': this.drawSettings(ctx, ui); break;
       case 'start': this.drawStart(ctx); break;
       case 'help': this.drawHelp(ctx, ui); break;
+      case 'lang': this.drawLangModal(ctx, ui); break;
       case 'tutDone': this.drawTutDone(ctx, ui); break;
     }
     this.drawToast(ctx, dt);
@@ -1899,24 +2424,24 @@ class Renderer {
           }
         }
       }
-      if (g.next.mat === MAT_STONE) this.txt('BATU', PX + 29, y + 6, P.text);
-      else if (g.next.mat === MAT_GUN) this.txt('MESIU', PX + 29, y + 6, this.speck.s);
+      if (g.next.mat === MAT_STONE) this.txt(t('BATU'), PX + 29, y + 6, P.text);
+      else if (g.next.mat === MAT_GUN) this.txt(t('MESIU'), PX + 29, y + 6, this.speck.s);
     }
     y += 22;
 
-    label('SKOR'); value(g.score);
-    label('TERBAIK'); value(Math.max(ui.best, g.score), P.dim);
+    label(t('SKOR')); value(g.score);
+    label(t('TERBAIK')); value(Math.max(ui.best, g.score), P.dim);
     // level boss: angka LEVEL memakai warna boss tema (kontras >= 5:1 dengan latar, beda dari teks & aksen)
     label('LEVEL'); value(g.level + (g.breather > 0 ? ' ~' : ''), isBossLevel(g.level) ? P.boss : P.text);
     label('CHAIN'); value(g.chain > 0 ? 'X' + g.chain : '-', g.chain > 1 ? P.accent : P.text);
 
     // meter miring
-    label('MIRING');
-    const t = g.tilt, bw = 54;
+    label(t('MIRING'));
+    const tl = g.tilt, bw = 54;
     ctx.fillStyle = P.shadow; ctx.fillRect(PX, y, bw, 5);
-    const low = t.meter < CFG.TILT_MIN_START && !t.active;
-    ctx.fillStyle = t.active ? (Math.floor(this.time * 12) % 2 ? '#ffffff' : P.accent) : low ? P.danger : P.accent;
-    ctx.fillRect(PX, y, Math.round(bw * t.meter), 5);
+    const low = tl.meter < CFG.TILT_MIN_START && !tl.active;
+    ctx.fillStyle = tl.active ? (Math.floor(this.time * 12) % 2 ? '#ffffff' : P.accent) : low ? P.danger : P.accent;
+    ctx.fillRect(PX, y, Math.round(bw * tl.meter), 5);
     y += 11;
 
     // warna aktif
@@ -1927,8 +2452,8 @@ class Renderer {
 
     // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
     if (this.k >= 2 && !ui.touch) {   // di layar sangat kecil teks bantuan tidak muat
-      this.txt('TAHAN Q/E MIRING', PX, 144, P.dim);
-      this.txt('P JEDA  M SUARA', PX, 151, P.dim);
+      this.txt(t('TAHAN Q/E MIRING'), PX, 144, P.dim);
+      this.txt(t('P JEDA  M SUARA'), PX, 151, P.dim);
     }
     this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
   }
@@ -1942,13 +2467,13 @@ class Renderer {
     let line1, line2 = '', col;
     if (e.phase === 'warn') {
       const pulse = Math.floor(this.time * 6) % 2 === 0;
-      line1 = `${EVENT_NAMES[e.type]} ${e.type === 'quake' ? '' : arrow}`.trim();
-      line2 = `DALAM ${Math.ceil(e.t)}`;
+      line1 = `${t(EVENT_NAMES[e.type])} ${e.type === 'quake' ? '' : arrow}`.trim();
+      line2 = t('DALAM {n}', { n: Math.ceil(e.t) });
       col = pulse ? P.accent : P.text;
     } else {
-      line1 = e.type === 'quake' ? 'GEMPA!' : `${EVENT_NAMES[e.type]} ${arrow}`;
-      if (e.type === 'force') line2 = ui.touch ? `TAHAN ${e.dir > 0 ? 'L' : 'R'} MELAWAN` : `TAHAN ${e.dir > 0 ? 'Q' : 'E'} MELAWAN`;
-      if (e.type === 'wind') line2 = 'PIECE TERDORONG';
+      line1 = e.type === 'quake' ? t('GEMPA!') : `${t(EVENT_NAMES[e.type])} ${arrow}`;
+      if (e.type === 'force') line2 = t('TAHAN {k} MELAWAN', { k: ui.touch ? (e.dir > 0 ? 'L' : 'R') : (e.dir > 0 ? 'Q' : 'E') });
+      if (e.type === 'wind') line2 = t('PIECE TERDORONG');
       col = P.danger;
     }
     const y = BY + 22;
@@ -2106,65 +2631,70 @@ class Renderer {
 
   drawStart(ctx) {
     this.drawLogo(ctx, 50);
-    if (Math.floor(this.time * 2) % 2 === 0) this.txt('KLIK / TAP UNTUK MULAI', LW / 2, 110, this.pal.text, 1, 'center');
+    if (Math.floor(this.time * 2) % 2 === 0) this.txt(t('KLIK / TAP UNTUK MULAI'), LW / 2, 110, this.pal.text, 1, 'center');
   }
 
   drawTitle(ctx, ui) {
     const P = this.pal;
     this.drawLogo(ctx, 24);
-    this.txt('TETRIS PASIR YANG BISA MIRING', LW / 2, 46, P.dim, 1, 'center');
+    this.txt(t('TETRIS PASIR YANG BISA MIRING'), LW / 2, 46, P.dim, 1, 'center');
     this.helpIcon(ctx, ui);
     const items = (ui.titleItems || ['play', 'board', 'ach', 'settings']).map((id) => [id, this.menuLabel(id, ui)]);
     // 5 item (dengan KREDIT): mulai sedikit lebih atas & lebih rapat supaya tidak menabrak teks TERBAIK
     this.menu(ctx, ui, items, items.length > 4 ? 58 : 64, 84, items.length > 4 ? 13 : items.length > 3 ? 14 : 15);
-    this.txt(`TERBAIK: ${ui.best}`, LW / 2, 124, P.accent, 1, 'center');
-    if (ui.playerName) this.txt(`PEMAIN: ${ui.playerName}`, LW / 2, 132, P.dim, 1, 'center');
+    this.txt(t('TERBAIK: {n}', { n: ui.best }), LW / 2, 124, P.accent, 1, 'center');
+    if (ui.playerName) this.txt(t('PEMAIN: {name}', { name: ui.playerName }), LW / 2, 132, P.dim, 1, 'center');
     // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
     if (!ui.touch) {
       const space = { k: 'space', w: 25 };
       // Dibuat kecil & pudar supaya tidak bersaing dengan menu (petunjuk lengkap ada di layar ? / CARA MAIN).
       const HINT_ALPHA = 0.5;
-      this.keyHints(ctx, 145, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH'], null, false, HINT_ALPHA, true);
-      this.keyHints(ctx, 154, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA'], null, false, HINT_ALPHA, true);
+      this.keyHints(ctx, 145, [{ k: 'left' }, { k: 'right' }, t('GESER'), 5, { k: 'up' }, t('PUTAR'), 5, space, t('JATUH')], null, false, HINT_ALPHA, true);
+      this.keyHints(ctx, 154, [t('TAHAN'), { k: 'Q' }, '/', { k: 'E' }, t('MIRING'), 5, { k: 'P' }, t('JEDA')], null, false, HINT_ALPHA, true);
     }
     if (ui.soundMode && ui.soundMode !== 'all') {
-      this.txt(ui.soundMode === 'off' ? 'SUARA: MATI' : 'MUSIK: MATI', LW / 2, 168, P.dim, 1, 'center');
+      this.txt(t(ui.soundMode === 'off' ? 'SUARA: MATI' : 'MUSIK: MATI'), LW / 2, 168, P.dim, 1, 'center');
     }
   }
 
   // Label menu bersama (judul, jeda, pengaturan).
   menuLabel(id, ui) {
     const SOUND = { all: 'SEMUA', sfx: 'EFEK SAJA', off: 'MATI' };
+    const LABEL = {
+      play: 'MAIN', board: 'PERINGKAT', ach: 'PRESTASI', settings: 'PENGATURAN', credits: 'KREDIT',
+      tutorial: 'MAIN TUTORIAL', skipTut: 'LEWATI TUTORIAL', resume: 'LANJUT', restart: 'ULANG',
+      menu: 'MENU UTAMA', back: 'KEMBALI',
+    };
     switch (id) {
-      case 'play': return 'MAIN';
-      case 'board': return 'PERINGKAT';
-      case 'ach': return 'PRESTASI';
-      case 'settings': return 'PENGATURAN';
-      case 'credits': return 'KREDIT';
-      case 'tutorial': return 'MAIN TUTORIAL';
-      case 'skipTut': return 'LEWATI TUTORIAL';
-      case 'resume': return 'LANJUT';
-      case 'restart': return 'ULANG';
-      case 'menu': return 'MENU UTAMA';
-      case 'back': return 'KEMBALI';
-      case 'name': return ui.playerName ? `NAMA: ${ui.playerName}` : 'ISI NAMA';
-      case 'sound': return `SUARA: ${SOUND[ui.soundMode] || 'SEMUA'}`;
-      case 'theme': return `TEMA: ${ui.themeName || 'KLASIK'}`;
-      default: return id.toUpperCase();
+      case 'name': return ui.playerName ? t('NAMA: {name}', { name: ui.playerName }) : t('ISI NAMA');
+      case 'sound': return t('SUARA: {v}', { v: t(SOUND[ui.soundMode] || 'SEMUA') });
+      case 'theme': return t('TEMA: {v}', { v: t(ui.themeName || 'KLASIK') });
+      case 'lang': return t('BAHASA: {v}', { v: ui.langName || 'INDONESIA' });
+      default: return LABEL[id] ? t(LABEL[id]) : id.toUpperCase();
     }
   }
 
-  // Tombol bantuan "?" di pojok kanan atas layar judul (keyboard: H).
+  // Pojok kanan atas layar judul: tombol bantuan "?" (keyboard: H) dan di kirinya tombol globe
+  // untuk ganti bahasa (keyboard: L).
   helpIcon(ctx, ui) {
-    const P = this.pal, x = LW - 15, y = 4, s = 11;
-    this.buttons.push({ id: 'help', x: x - 3, y: y - 3, w: s + 6, h: s + 6 });   // area sentuh sedikit lebih besar
-    ctx.fillStyle = P.frame;
-    ctx.fillRect(x + 1, y, s - 2, s);
-    ctx.fillRect(x, y + 1, s, s - 2);
-    ctx.fillStyle = P.shadow;
-    ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
-    this.txt('?', x + s / 2, y + (s - this.th()) / 2, P.accent, 1, 'center');
-    if (!ui.touch) this.txt('H', x - 3, y + (s - this.th()) / 2, P.dim, 1, 'right');
+    // ICON: skala glyph ikon (sama untuk keduanya → ketebalan garis globe & "?" tetap sama)
+    const P = this.pal, y = 4, s = 11, ICON = 0.75;
+    const box = (id, x) => {
+      this.buttons.push({ id, x: x - 2, y: y - 3, w: s + 4, h: s + 6 });   // area sentuh sedikit lebih besar
+      ctx.fillStyle = P.frame;
+      ctx.fillRect(x + 1, y, s - 2, s);
+      ctx.fillRect(x, y + 1, s, s - 2);
+      ctx.fillStyle = P.shadow;
+      ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
+    };
+    const hx = LW - s - 3;
+    box('help', hx);
+    const iy = y + (s - this.th(ICON) * ICON_ROWS / 7) / 2;   // ikon 13 baris, dipusatkan di kotak
+    this.txt('⍰', hx + s / 2, iy, P.accent, ICON, 'center');
+    const gx = hx - s - 3;
+    box('lang', gx);
+    // globe & tanda tanya = glyph font setinggi ICON_ROWS → ukuran & ketebalan garisnya sama
+    this.txt('◎', gx + s / 2, iy, P.accent, ICON, 'center');
   }
 
   // CARA MAIN: modal di atas layar judul (bukan halaman baru). Isi rata tengah, kotak di tengah layar.
@@ -2176,13 +2706,13 @@ class Renderer {
     this.dim(ctx, 0.7);
     this.buttons.push({ id: 'back', x: 0, y: 0, w: LW, h: LH });   // area luar kotak
 
-    const tilt = ui.touch ? 'TAHAN L / R' : 'TAHAN Q / E';
+    const tilt = t(ui.touch ? 'TAHAN L / R' : 'TAHAN Q / E');
     const items = [
-      'BALOK YANG MENDARAT HANCUR JADI PASIR.',
-      'SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN: JEMBATAN HILANG, DAPAT SKOR.',
-      `${tilt} UNTUK MEMIRINGKAN PAPAN. PASIR IKUT MENGALIR.`,
-      'MESIU MELEDAK SAAT KENA CLEAR. BATU KAKU, TIDAK LONGSOR.',
-      'PASIR LEWAT GARIS MERAH ATAS = KALAH.',
+      t('BALOK YANG MENDARAT HANCUR JADI PASIR.'),
+      t('SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN: JEMBATAN HILANG, DAPAT SKOR.'),
+      t('{tilt} UNTUK MEMIRINGKAN PAPAN. PASIR IKUT MENGALIR.', { tilt }),
+      t('MESIU MELEDAK SAAT KENA CLEAR. BATU KAKU, TIDAK LONGSOR.'),
+      t('PASIR LEWAT GARIS MERAH ATAS = KALAH.'),
     ];
     const BW = 146, PAD = 6, MW = BW - 2 * PAD, LINE = 7, GAP = 6, DEMO = 22;
     const wrapped = items.map((t) => this.wrap(t, MW));
@@ -2197,7 +2727,7 @@ class Renderer {
 
     const cx = LW / 2;
     let y = by + PAD;
-    this.txt('CARA MAIN', cx, y, P.accent, 1.5, 'center');
+    this.txt(t('CARA MAIN'), cx, y, P.accent, 1.5, 'center');
     y += titleH;
     wrapped.forEach((lines, k) => {
       for (const line of lines) { this.txt(line, cx, y, P.text, 1, 'center'); y += LINE; }
@@ -2215,6 +2745,37 @@ class Renderer {
     ids.forEach((id, k) => {
       this.button(ctx, id, this.menuLabel(id, ui), x, Math.round(y), bws[k], 11, ui.focus === k);
       x += bws[k] + gap;
+    });
+  }
+
+  // PILIH BAHASA: modal di atas layar asalnya (judul atau pengaturan). Klik/tap di luar kotak = tutup.
+  // Bahasa yang sedang dipakai ditandai titik di kiri namanya.
+  drawLangModal(ctx, ui) {
+    const P = this.pal;
+    if (ui.langFrom === 'settings') this.drawSettings(ctx, { ...ui, focus: -1, menuItems: ui.settingsItems });
+    else this.drawTitle(ctx, { ...ui, focus: -1, menuItems: null });
+    this.buttons = [];                             // layar di belakang tidak bisa diklik selama modal terbuka
+    this.dim(ctx, 0.7);
+    this.buttons.push({ id: 'back', x: 0, y: 0, w: LW, h: LH });   // area luar kotak
+
+    const opts = ui.langOptions || [];
+    const BW = 112, PAD = 7, ROW = 15, titleH = this.th(1.5) + 8;
+    const BH = PAD + titleH + opts.length * ROW + 2 + PAD;
+    const bx = Math.floor((LW - BW) / 2), by = Math.floor((LH - BH) / 2);
+    this.layer();
+    this.buttons.push({ id: 'none', x: bx, y: by, w: BW, h: BH });
+    ctx.fillStyle = P.frame; ctx.fillRect(bx, by, BW, BH);
+    ctx.fillStyle = P.bg; ctx.fillRect(bx + 1, by + 1, BW - 2, BH - 2);
+    this.txt(t('BAHASA'), LW / 2, by + PAD, P.accent, 1.5, 'center');
+    const y0 = by + PAD + titleH;
+    const bw = BW - 2 * PAD - 8;
+    opts.forEach((o, k) => {
+      const x = Math.floor((LW - bw) / 2), y = y0 + k * ROW;
+      this.button(ctx, o.id, o.label, x, y, bw, 11, ui.focus === k);
+      if (o.current) {                             // penanda bahasa aktif
+        ctx.fillStyle = ui.focus === k ? P.bg : P.accent;
+        ctx.fillRect(x + 4, y + 4, 3, 3);
+      }
     });
   }
 
@@ -2306,40 +2867,40 @@ class Renderer {
     });
     y += 4;
     for (const row of v.keys) { this.keyHints(ctx, y, row.parts, PX, row.done); y += 12; }
-    this.txt(ui.touch ? 'MENU: LEWATI' : 'ESC: LEWATI', PX, 158, P.dim);
+    this.txt(t(ui.touch ? 'MENU: LEWATI' : 'ESC: LEWATI'), PX, 158, P.dim);
     this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
   }
 
   drawTutDone(ctx, ui) {
     const P = this.pal;
     this.dim(ctx, 0.86);
-    this.txt('SIAP MAIN!', LW / 2, 24, P.accent, 2, 'center');
+    this.txt(t('SIAP MAIN!'), LW / 2, 24, P.accent, 2, 'center');
     let y = 48;
     const lines = [
-      'JANGAN BIARKAN PASIR LEWAT GARIS MERAH ATAS.',
-      'GANGGUAN (GEMPA, ANGIN, PAPAN MIRING) SELALU DIPERINGATKAN 3 DETIK SEBELUMNYA.',
+      t('JANGAN BIARKAN PASIR LEWAT GARIS MERAH ATAS.'),
+      t('GANGGUAN (GEMPA, ANGIN, PAPAN MIRING) SELALU DIPERINGATKAN 3 DETIK SEBELUMNYA.'),
     ];
     for (const text of lines) {
       for (const line of this.wrap(text, LW - 24)) { this.txt(line, LW / 2, y, P.text, 1, 'center'); y += 8; }
       y += 5;
     }
-    const items = (ui.menuItems || ['play', 'menu']).map((id) => [id, id === 'play' ? 'MAIN SEKARANG' : this.menuLabel(id, ui)]);
+    const items = (ui.menuItems || ['play', 'menu']).map((id) => [id, id === 'play' ? t('MAIN SEKARANG') : this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 110, 96, 15);
   }
 
   drawPause(ctx, ui) {
     this.dim(ctx);
-    this.txt('JEDA', LW / 2, 40, this.pal.text, 2, 'center');
+    this.txt(t('JEDA'), LW / 2, 40, this.pal.text, 2, 'center');
     const items = (ui.menuItems || ['resume', 'restart', 'menu']).map((id) => [id, this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 62, 96, 15);
   }
 
   drawSettings(ctx, ui) {
     this.dim(ctx, 0.6);
-    this.txt('PENGATURAN', LW / 2, 30, this.pal.text, 2, 'center');
+    this.txt(t('PENGATURAN'), LW / 2, 26, this.pal.text, 2, 'center');
     const items = (ui.menuItems || ['sound', 'back']).map((id) => [id, this.menuLabel(id, ui)]);
-    this.menu(ctx, ui, items, 60, 96, 15);
-    if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 130, this.pal.dim, 1, 'center');
+    this.menu(ctx, ui, items, 50, 104, 15);   // 5 item: suara, tema, bahasa, nama, kembali
+    if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 50 + items.length * 15 + 4, this.pal.dim, 1, 'center');
   }
 
   drawOver(ctx, ui) {
@@ -2348,7 +2909,7 @@ class Renderer {
     this.txt('GAME OVER', LW / 2, 12, P.danger, 2, 'center');
     let y = 34;
     const row = (k, v, col = P.text) => {
-      this.txt(k, 24, y, P.dim);
+      this.txt(t(k), 24, y, P.dim);
       this.txt(v, 136, y, col, 1, 'right');
       y += 9;
     };
@@ -2356,26 +2917,26 @@ class Renderer {
     row('CHAIN TERBAIK', o.bestChain ?? 0);
     row('LEVEL', o.level ?? 1);
     row('BUTIR DIHAPUS', o.grains ?? 0);
-    row('DURASI', `${o.duration ?? 0} DTK`);
+    row('DURASI', t('{n} DTK', { n: o.duration ?? 0 }));
     y += 3;
-    if (o.newBest) { this.txt('REKOR PRIBADI BARU!', LW / 2, y, P.accent, 1, 'center'); y += 9; }
+    if (o.newBest) { this.txt(t('REKOR PRIBADI BARU!'), LW / 2, y, P.accent, 1, 'center'); y += 9; }
     if (ui.lbStatus) { this.txt(ui.lbStatus, LW / 2, y, ui.lbStatusColor || P.text, 1, 'center'); y += 9; }
-    if (o.newAch > 0) this.txt(`${o.newAch} PRESTASI BARU`, LW / 2, y, P.dim, 1, 'center');
-    this.menu(ctx, ui, [['restart', 'MAIN LAGI'], ['board', 'PERINGKAT'], ['menu', 'MENU']], 120);
+    if (o.newAch > 0) this.txt(t('{n} PRESTASI BARU', { n: o.newAch }), LW / 2, y, P.dim, 1, 'center');
+    this.menu(ctx, ui, [['restart', t('MAIN LAGI')], ['board', t('PERINGKAT')], ['menu', t('MENU')]], 120);
   }
 
   drawLeaderboard(ctx, ui) {
     const P = this.pal, lb = ui.lb || {};
     if (ui.fromOver) this.dim(ctx, 0.92);
-    this.txt('PERINGKAT', LW / 2, 8, P.text, 2, 'center');   // jarak lega dari tepi atas, rapat ke tab
-    this.button(ctx, 'tabWeekly', 'MINGGU INI', 6, 20, 72, 11, lb.tab === 'weekly');
-    this.button(ctx, 'tabAll', 'SEPANJANG MASA', 82, 20, 72, 11, lb.tab === 'alltime');
+    this.txt(t('PERINGKAT'), LW / 2, 8, P.text, 2, 'center');   // jarak lega dari tepi atas, rapat ke tab
+    this.button(ctx, 'tabWeekly', t('MINGGU INI'), 6, 20, 72, 11, lb.tab === 'weekly');
+    this.button(ctx, 'tabAll', t('SEPANJANG MASA'), 82, 20, 72, 11, lb.tab === 'alltime');
 
     if (lb.loading) {
-      this.txt('MEMUAT...', LW / 2, 80, P.dim, 1, 'center');
+      this.txt(t('MEMUAT...'), LW / 2, 80, P.dim, 1, 'center');
     } else if (!lb.rows || lb.rows.length === 0) {
-      this.txt('BELUM ADA SKOR', LW / 2, 70, P.dim, 1, 'center');
-      this.txt('JADILAH YANG PERTAMA!', LW / 2, 80, P.dim, 1, 'center');
+      this.txt(t('BELUM ADA SKOR'), LW / 2, 70, P.dim, 1, 'center');
+      this.txt(t('JADILAH YANG PERTAMA!'), LW / 2, 80, P.dim, 1, 'center');
     } else {
       // Sampai 100 baris, bisa digulir. Kalau pemain di luar daftar (peringkat 100+),
       // barisnya ditaruh langsung di bawah baris terakhir, dipisah titik-titik.
@@ -2408,21 +2969,21 @@ class Renderer {
         ctx.fillStyle = P.dim;
         for (let dx = -6; dx <= 6; dx += 6) ctx.fillRect(LX + LWD / 2 + dx, y + 2, 1, 1);
         y += SEP;
-        row(pinned.rank, { name: pinned.name || 'KAMU', score: pinned.score, me: true }, y, pinned.rank - 1);
+        row(pinned.rank, { name: pinned.name || t('KAMU'), score: pinned.score, me: true }, y, pinned.rank - 1);
       }
       this.endScroll(ctx, ui);
     }
-    const info = lb.offline ? 'OFFLINE - SKOR LOKAL' : (lb.tab === 'weekly' && lb.resetIn ? `RESET DALAM ${lb.resetIn}` : '');
+    const info = lb.offline ? t('OFFLINE - SKOR LOKAL') : (lb.tab === 'weekly' && lb.resetInSec != null ? t('RESET DALAM {t}', { t: formatDuration(lb.resetInSec) }) : '');
     if (info) this.txt(info, LW / 2, 149, lb.offline ? P.danger : P.dim, 1, 'center');
-    this.menu(ctx, { focus: 0 }, [['back', 'KEMBALI']], 160, 60);
+    this.menu(ctx, { focus: 0 }, [['back', t('KEMBALI')]], 160, 60);
   }
 
   drawAchievements(ctx, ui) {
     const P = this.pal;
     this.dim(ctx, 0.6);
-    this.txt('PRESTASI', LW / 2, 8, P.text, 2, 'center');    // jarak lega dari tepi atas, rapat ke daftar
+    this.txt(t('PRESTASI'), LW / 2, 8, P.text, 2, 'center');    // jarak lega dari tepi atas, rapat ke daftar
     const list = ui.ach || [];
-    this.txt(`TROFI ${list.filter((a) => a.unlocked).length}/${list.length}`, LW / 2, 20, P.dim, 1, 'center');
+    this.txt(t('TROFI {a}/{b}', { a: list.filter((a) => a.unlocked).length, b: list.length }), LW / 2, 20, P.dim, 1, 'center');
     // Satu kartu per prestasi: trofi di kiri, nama + deskripsi (dibungkus kalau kepanjangan).
     // Yang sudah terbuka diberi garis warna tingkat trofinya di tepi kiri.
     const LX = 6, LY = 27, LWD = 144, LHT = 127, GAP = 3, TX = LX + 20;
@@ -2430,11 +2991,11 @@ class Renderer {
       const show = a.unlocked || !a.hidden;
       // Kartu maksimal 3 baris: nama + deskripsi + hadiah. Deskripsi boleh 2 baris hanya kalau tidak ada hadiah;
       // kalau tetap kepanjangan, deskripsi diperkecil jadi satu baris (cadangan, deskripsi idealnya <= 30 huruf).
-      const desc = show ? a.desc : 'RAHASIA', maxW = LX + LWD - 3 - TX;
+      const desc = t(show ? a.desc : 'RAHASIA'), maxW = LX + LWD - 3 - TX;
       let lines = this.wrap(desc, maxW);
       if (lines.length > (a.reward ? 1 : 2)) lines = [{ text: desc, size: Math.min(1, maxW / this.tw(desc)) }];
       // hadiah (mis. tema) selalu ditulis, juga untuk prestasi rahasia → pemain tahu ada yang bisa dikejar
-      if (a.reward) lines.push({ reward: `HADIAH: ${a.reward}` });
+      if (a.reward) lines.push({ reward: t('HADIAH: {r}', { r: t(a.reward) }) });
       return { a, show, lines, h: 10 + lines.length * 7 };
     });
     const contentH = cards.reduce((sum, c) => sum + c.h + GAP, -GAP);
@@ -2448,7 +3009,7 @@ class Renderer {
           ctx.fillRect(LX, y, 2, h);
         }
         this.drawTrophy(ctx, a.unlocked ? a.tier : 'locked', LX + 5, y + Math.floor((h - 11) / 2));
-        this.txt(show ? a.name : '???', TX, y + 3, a.unlocked ? P.text : P.dim);
+        this.txt(show ? t(a.name) : '???', TX, y + 3, a.unlocked ? P.text : P.dim);
         lines.forEach((ln, i) => {
           if (ln.reward) this.txt(ln.reward, TX, y + 9.5 + i * 7, a.unlocked ? P.accent : P.text);
           else if (ln.text) this.txt(ln.text, TX, y + 9.5 + i * 7, P.dim, ln.size);
@@ -2458,7 +3019,7 @@ class Renderer {
       y += h + GAP;
     }
     this.endScroll(ctx, ui);
-    this.menu(ctx, { focus: 0 }, [['back', 'KEMBALI']], 160, 60);
+    this.menu(ctx, { focus: 0 }, [['back', t('KEMBALI')]], 160, 60);
   }
 
   drawToast(ctx, dt) {
@@ -2951,212 +3512,10 @@ class Achievements {
 return { ACHIEVEMENTS, Achievements };
 })();
 
-// ===================================================================== js/leaderboard.js
-__mod["leaderboard"] = (function () {
-const { store } = __mod["util"];
-
-// Klien leaderboard. Server utama = API pusat di sandtilt.vercel.app (satu papan untuk semua platform);
-// hanya deployment itu yang punya database. Deployment lain (Vercel lain, gameedukasi, itch.io, ...)
-// cuma tampilan yang memanggil API pusat, jadi tidak perlu database sendiri.
-// Di gameedukasi, kalau server pusat tidak bisa dihubungi, pindah ke api/leaderboard.php lokal.
-// Tanpa server sama sekali → mode offline (skor disimpan di localStorage).
-//
-// Uji coba: tambahkan ?lb=central | php | off di URL untuk memaksa satu server.
-const CENTRAL_API = 'https://sandtilt.vercel.app/api/leaderboard';
-const LOCAL_PHP_API = 'api/leaderboard.php';
-const NAME_RE = /^[A-Za-z0-9 _-]{2,16}$/;
-
-// Daftar server yang dicoba berurutan untuk halaman ini.
-function apiList() {
-  const force = new URLSearchParams(location.search).get('lb');
-  if (force === 'central') return [CENTRAL_API];
-  if (force === 'php') return [LOCAL_PHP_API];
-  if (force === 'off') return [];
-  const host = location.hostname;
-  if (location.protocol === 'file:') return [];                              // dibuka dari disk: offline
-  if (host === new URL(CENTRAL_API).hostname) return ['/api/leaderboard'];   // server pusat itu sendiri
-  if (/\.vercel\.app$/.test(host)) return [CENTRAL_API];                     // Vercel lain (sandtilt-azhar, preview): tanpa PHP
-  if (host === 'localhost' || host === '127.0.0.1') return [LOCAL_PHP_API];  // tes lokal tidak mengotori papan pusat
-  return [CENTRAL_API, LOCAL_PHP_API];                                       // gameedukasi & platform lain
-}
-
-// Jawaban server yang berarti "server ini belum bisa dipakai" → coba server berikutnya.
-const SERVER_DOWN = new Set(['NO_DB', 'SERVER_ERROR', 'FORBIDDEN_ORIGIN']);
-
-function makeUuid() {
-  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-  const b = new Uint8Array(16);
-  (window.crypto || {}).getRandomValues ? crypto.getRandomValues(b) : b.forEach((_, i) => { b[i] = Math.random() * 256; });
-  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
-  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-}
-
-// Senin minggu ini (tanggal lokal) — hanya untuk mode offline. Mode online memakai tanggal dari server.
-function localWeekStart() {
-  const d = new Date();
-  const day = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - day);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-async function request(url, opts = {}, timeout = 5000) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeout);
-  try {
-    const res = await fetch(url, { ...opts, signal: ctrl.signal, cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return await res.json();
-  } finally { clearTimeout(timer); }
-}
-
-function validName(name) { return NAME_RE.test(name.trim()); }
-
-function formatDuration(sec) {
-  sec = Math.max(0, Math.floor(sec));
-  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
-  if (d > 0) return `${d}H ${h}J`;
-  if (h > 0) return `${h}J ${m}M`;
-  return `${m}M`;
-}
-
-// Run (permainan yang dibuka di server) yang terikat pada hasil satu game.
-const runOf = new WeakMap();
-const NO_RUN = Promise.resolve({ error: 'offline' });
-
-class Leaderboard {
-  constructor() {
-    // Token rahasia pemain (disimpan dengan kunci lama 'uuid' supaya pemain lama tetap dikenali).
-    // Tidak pernah ditampilkan: papan peringkat hanya memakai public id (pid) dari server.
-    this.token = store.get('uuid');
-    if (!this.token) { this.token = makeUuid(); store.set('uuid', this.token); }
-    this.pid = store.get('pid', '');
-    this.name = store.get('name', '');
-    this.apis = apiList();
-    this.runPromise = NO_RUN;
-  }
-
-  setName(name) { this.name = name.trim(); store.set('name', this.name); }
-  setPid(pid) { if (pid && pid !== this.pid) { this.pid = pid; store.set('pid', pid); } }
-
-  // Panggil server berurutan. Server yang mati/belum siap dilewati; yang berhasil dipakai duluan
-  // berikutnya. only = paksa satu server (run hanya berlaku di server yang membukanya).
-  async call(action, { body, query = {} } = {}, only = null) {
-    const list = only ? [only] : this.apis;
-    let lastErr = new Error('offline');
-    for (const api of list) {
-      const qs = new URLSearchParams({ action, ...query });
-      const opts = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {};
-      try {
-        const j = await request(`${api}?${qs}`, opts);
-        if (!j || typeof j !== 'object') throw new Error('bukan JSON');
-        if (!j.success && SERVER_DOWN.has(j.code)) throw new Error(j.code);
-        if (!only && api !== this.apis[0]) this.apis = [api, ...this.apis.filter((a) => a !== api)];
-        if (j.player_id) this.setPid(j.player_id);
-        return { j, api };
-      } catch (e) { lastErr = e; }
-    }
-    throw lastErr;
-  }
-
-  // Dipanggil saat game dimulai: server mencatat waktu mulai; skor nanti hanya diterima untuk run ini.
-  startRun() {
-    if (!this.apis.length) { this.runPromise = NO_RUN; return; }
-    this.runPromise = this.call('start_run', { body: { token: this.token } })
-      .then(({ j, api }) => (j.success ? { id: j.run_id, api } : { error: j.code || 'gagal' }))
-      .catch(() => ({ error: 'offline' }));
-  }
-
-  // Simpan juga di lokal: untuk mode offline & antrean kirim ulang. Dipanggil saat game selesai,
-  // sekaligus mengikat run game ini ke hasilnya (game berikutnya membuka run baru).
-  saveLocal(stats) {
-    runOf.set(stats, this.runPromise);
-    this.runPromise = NO_RUN;
-    const runs = store.get('runs', []);
-    runs.push({ week: localWeekStart(), score: stats.score, chain: stats.bestChain, at: Date.now() });
-    runs.sort((a, b) => b.score - a.score);
-    store.set('runs', runs.slice(0, 50));
-  }
-
-  localBoard(tab) {
-    const week = localWeekStart();
-    const runs = store.get('runs', []).filter((r) => tab === 'alltime' || r.week === week);
-    const name = this.name || 'KAMU';
-    return { offline: true, tab, rows: runs.map((r) => ({ name, score: r.score, me: true })), mine: null };
-  }
-
-  async get(tab) {
-    try {
-      const { j } = await this.call('get', { query: { tab, ...(this.pid ? { pid: this.pid } : {}) } });
-      if (!j.success) throw new Error(j.message || 'gagal');
-      return {
-        offline: false, tab,
-        rows: j.data.map((r) => ({ name: r.player_name, score: r.score, me: !!this.pid && r.player_id === this.pid })),
-        mine: j.mine ? { name: j.mine.player_name, score: j.mine.score, rank: j.mine.rank } : null,
-        resetIn: j.reset_in_sec != null ? formatDuration(j.reset_in_sec) : '',
-      };
-    } catch {
-      return this.localBoard(tab);
-    }
-  }
-
-  // Melempar error kalau semua server tidak bisa dihubungi (pemanggil menganggapnya offline).
-  async claimName(name) {
-    const { j } = await this.call('claim_name', { body: { token: this.token, player_name: name.trim() } });
-    return j;
-  }
-
-  async submit(stats) {
-    const run = stats.run || await (runOf.get(stats) || NO_RUN);
-    if (!run.id) {
-      if (run.error === 'offline') return { ok: false, offline: true };
-      return { ok: false, code: run.error === 'RATE_LIMIT' ? 'RATE_LIMIT' : 'NO_RUN' };
-    }
-    const body = {
-      token: this.token, player_name: this.name, run_id: run.id,
-      score: stats.score, max_chain: stats.bestChain, level: stats.level,
-      clears: stats.clears, duration_sec: stats.duration,
-    };
-    try {
-      const { j } = await this.call('submit', { body }, run.api);
-      if (!j.success) return { ok: false, code: j.code, message: j.message };
-      this.clearPending(stats);
-      return { ok: true, newBest: j.new_best, rankWeekly: j.rank_weekly, rankAll: j.rank_alltime };
-    } catch {
-      this.queuePending({ ...stats, run });
-      return { ok: false, offline: true };
-    }
-  }
-
-  // Skor yang gagal terkirim disimpan (hanya yang terbaik, beserta run-nya) dan dicoba lagi nanti.
-  queuePending(stats) {
-    const p = store.get('pending');
-    if (!p || stats.score > p.score) store.set('pending', { ...stats, week: localWeekStart() });
-  }
-  clearPending(stats) {
-    const p = store.get('pending');
-    if (p && p.score <= stats.score) store.set('pending', null);
-  }
-  // Kirim ulang skor tertunda. Hasil: 'sent' (terkirim), 'name' (perlu nama baru: nama lama ternyata
-  // dipakai pemain lain; skor TETAP disimpan, run-nya belum terpakai di server), atau null.
-  async flushPending() {
-    const p = store.get('pending');
-    if (p && (p.week !== localWeekStart() || !p.run)) { store.set('pending', null); return null; }
-    if (!p) return null;
-    if (!this.name) return 'name';
-    const r = await this.submit(p);
-    if (r.code === 'NAME_TAKEN' || r.code === 'BAD_NAME') return 'name';
-    if (r.ok || !r.offline) store.set('pending', null);
-    return r.ok ? 'sent' : null;
-  }
-}
-
-return { CENTRAL_API, validName, formatDuration, Leaderboard };
-})();
-
 // ===================================================================== js/tutorial.js
 __mod["tutorial"] = (function () {
 const { W, H, BLOCK, MAT_STONE, MAT_GUN } = __mod["config"];
+const { t } = __mod["i18n"];
 
 // Tutorial interaktif untuk pemain baru (±1,5 menit). Pemain belajar dengan mencoba langsung:
 // setiap langkah menampilkan petunjuk singkat dan baru lanjut setelah aksinya dilakukan.
@@ -3164,8 +3523,9 @@ const { W, H, BLOCK, MAT_STONE, MAT_GUN } = __mod["config"];
 //   2 JATUH     turun pelan + jatuh instan → piece hancur jadi pasir
 //   3 JEMBATAN  papan disiapkan: jembatan merah bercelah, isi celahnya dengan piece merah
 //   4 MIRING    papan disiapkan: pasir merah belum sampai dinding kanan, tahan miring ke kanan
-//   5 BATU      lubang dalam di antara dua pilar. Game memperagakan balok PASIR rontok ke lubang,
-//               lalu pemain menjatuhkan balok BATU: tetap utuh di atas lubang dan jadi jembatan
+//   5 BATU      lubang dalam di antara dua pilar. Game memperagakan balok PASIR kuning rontok ke lubang,
+//               lalu pemain menjatuhkan balok BATU kuning (warna sama, tidak jadi jembatan): batu tetap
+//               utuh di atas lubang dan TETAP TERLIHAT saat pesan BAGUS! muncul (tidak perlu clear)
 //   6 MESIU     tumpukan batu yang dialiri mesiu di sebelah celah; jembatan merah di-clear →
 //               mesiu menyala → tumpukan batu meledak
 // Selama tutorial: tanpa event, garis bahaya, naik level, prestasi, dan skor tidak dikirim.
@@ -3180,10 +3540,12 @@ const PIT_X0 = 32, PIT_X1 = 48;
 // Tumpukan batu + mesiu langkah MESIU: 4 blok lebar, 4 blok tinggi di kiri.
 const MOUND_W = 32, MOUND_H = 4 * BLOCK;
 const FAIL_WAIT = 2.2;          // detik tanpa clear setelah percobaan → papan disiapkan ulang
+const STONE_SETTLE = 0.9;       // langkah BATU: detik setelah batu mendarat sebelum dicek (batu sudah diam)
 
 const STEPS = ['move', 'drop', 'bridge', 'tilt', 'stone', 'gun'];
 // Langkah yang selesai lewat clear setelah pemain menjatuhkan piece (gagal → coba lagi).
-const PLACE_STEPS = new Set(['bridge', 'stone', 'gun']);
+// BATU tidak termasuk: selesai saat batu terbukti tetap utuh di atas lubang (lihat checkStone).
+const PLACE_STEPS = new Set(['bridge', 'gun']);
 // Langkah pengenalan tombol: SEMUA tombol ini harus dicoba dulu (tombol yang sudah dipakai ditampilkan pudar).
 const REQUIRED = { move: ['left', 'right', 'rotCW', 'rotCCW'], drop: ['soft', 'hard'] };
 
@@ -3222,6 +3584,7 @@ class Tutorial {
     this.used = new Set();  // aksi yang sudah dicoba di langkah ini
     this.phase = '';       // langkah BATU: 'demo' (peragaan pasir) → 'watch' (pasir rontok) → 'try'
     this.timer = 0;
+    this.settle = 0;       // langkah BATU: > 0 → hitung mundur sebelum memeriksa batu yang mendarat
     this.setup();
   }
 
@@ -3271,16 +3634,34 @@ class Tutorial {
     }
   }
 
-  // giliran pemain di langkah BATU: balok batu merah di atas lubang
+  // giliran pemain di langkah BATU: balok BATU kuning (warna sama dengan pasir peragaan) di atas lubang.
+  // Kuning tidak menyambung lapisan merah, jadi tidak terjadi clear dan batunya tetap terlihat.
   startTry() {
     const r = this.game.rules, s = this.game.sand;
     // sisa pasir peragaan di atas pilar dibuang (yang sudah rontok ke lubang tetap terlihat),
-    // supaya batu mendarat langsung di pilar dan menyentuh lapisan merah
+    // supaya batu mendarat langsung di pilar
     for (let i = 0; i < LAYER_Y * W; i++) { s.cells[i] = 0; s.mat[i] = 0; }
     this.game.dirty = true;
     this.phase = 'try';
     r.controls = true; r.fall = 0.55;
-    this.game.spawnSpec({ type: 'I', color: RED, mat: MAT_STONE });
+    this.game.spawnSpec({ type: 'I', color: YELLOW, mat: MAT_STONE });
+  }
+
+  // Batu berhasil kalau ada butir batu di atas lubang (di atas lapisan, kolom lubang) DAN tidak ada
+  // batu di dalam lubang: artinya batu tertahan pilar dan tidak rontok seperti pasir. Gagal kalau batu
+  // masuk lubang (mis. diputar tegak; ujungnya bisa tetap menyembul di atas lubang) atau tidak menutupinya.
+  checkStone() {
+    const s = this.game.sand;
+    let above = false;
+    for (let y = 0; y < H; y++) {
+      for (let x = PIT_X0; x < PIT_X1; x++) {
+        const i = y * W + x;
+        if (s.cells[i] === 0 || s.mat[i] !== MAT_STONE) continue;
+        if (y >= LAYER_Y) return false;   // batu di dalam lubang
+        above = true;
+      }
+    }
+    return above;
   }
 
   // Isi ulang papan: fn(x, y) → warna (0 = kosong) atau [warna, material].
@@ -3313,6 +3694,8 @@ class Tutorial {
     if (this.key === 'drop' && this.allUsed()) this.succeed();
     // peragaan BATU: pasir sudah mendarat, beri waktu melihatnya rontok ke lubang
     else if (this.phase === 'demo') { this.phase = 'watch'; this.timer = 2.2; }
+    // batu pemain mendarat: tunggu sampai diam, lalu periksa apakah tetap di atas lubang
+    else if (this.phase === 'try') this.settle = STONE_SETTLE;
     // piece pemain sudah mendarat: tunggu sebentar, kalau tidak terjadi clear berarti gagal
     else if (PLACE_STEPS.has(this.key)) this.fail = FAIL_WAIT;
   }
@@ -3322,7 +3705,8 @@ class Tutorial {
     this.done = true;
     this.fail = 0;
     this.retry = false;
-    this.wait = this.key === 'gun' ? 2.4 : PLACE_STEPS.has(this.key) || this.key === 'tilt' ? 1.8 : 1.0;   // beri waktu melihat clear/ledakan
+    // beri waktu melihat clear/ledakan; BATU lebih lama supaya batu yang utuh & pasir di lubang sempat dibandingkan
+    this.wait = this.key === 'gun' || this.key === 'stone' ? 2.6 : PLACE_STEPS.has(this.key) || this.key === 'tilt' ? 1.8 : 1.0;
     if (this.key === 'move') this.game.rules.fall = 0.5;   // piece yang sama langsung jatuh di langkah berikutnya
   }
 
@@ -3350,6 +3734,14 @@ class Tutorial {
       if (this.timer <= 0) this.startTry();
       return;
     }
+    if (this.settle > 0) {
+      this.settle -= dt;
+      if (this.settle <= 0) {
+        if (this.checkStone()) this.succeed();
+        else { this.retries++; this.go(this.step, true); }
+      }
+      return;
+    }
     // Langkah miring gagal: sudah dicoba, meter dilepas cukup lama, tetapi belum ada clear.
     if (this.key === 'tilt' && this.tilted && !g.tilt.active && !g.clearing) {
       this.fail = this.fail > 0 ? this.fail : FAIL_WAIT;
@@ -3370,24 +3762,24 @@ class Tutorial {
     const T = (k === 'stone' && (this.phase === 'demo' || this.phase === 'watch')) ? TEXT[`stone_${this.phase}`] : TEXT[k];
     const v = {
       n: this.step + 1, total: STEPS.length, key: k,
-      title: this.done ? 'BAGUS!' : T.title,
-      body: this.done ? T.good : this.retry ? `COBA LAGI! ${T.body}` : T.body,
+      title: t(this.done ? 'BAGUS!' : T.title),
+      body: this.done ? t(T.good) : this.retry ? t('COBA LAGI! {body}', { body: t(T.body) }) : t(T.body),
       // tiap tombol diberi tanda done kalau aksinya sudah dicoba; teks baris ikut pudar kalau semua tombolnya done
       keys: this.done ? [] : ((touch ? T.touch : T.keys) || []).map((row) => {
-        const parts = row.map((p) => (typeof p === 'object' && p.a ? { ...p, done: this.used.has(p.a) } : p));
+        const parts = row.map((p) => (typeof p === 'object' && p.a ? { ...p, done: this.used.has(p.a) } : typeof p === 'string' ? t(p) : p));
         const acts = parts.filter((p) => typeof p === 'object' && p.a);
         return { parts, done: acts.length > 0 && acts.every((p) => p.done) };
       }),
       good: this.done, retry: this.retry && !this.done,
     };
     // contoh tekstur material di samping judul
-    if (k === 'stone') v.mat = { mat: this.phase === 'try' || this.done ? MAT_STONE : 0, color: RED };
+    if (k === 'stone') v.mat = { mat: this.phase === 'try' || this.done ? MAT_STONE : 0, color: YELLOW };
     if (k === 'gun') v.mat = { mat: MAT_GUN, color: YELLOW };
     if (this.done) return v;
     const above = LAYER_Y - 2 * BLOCK;
     if (k === 'bridge') v.mark = { walls: true, arrowX: (GAP_X0 + GAP_X1) / 2, arrowY: above };
     if (k === 'tilt') v.mark = { walls: true, push: 1, arrowY: LAYER_Y - 5 };
-    if (k === 'stone') v.mark = { walls: this.phase === 'try', arrowX: (PIT_X0 + PIT_X1) / 2, arrowY: above };
+    if (k === 'stone') v.mark = { arrowX: (PIT_X0 + PIT_X1) / 2, arrowY: above };
     if (k === 'gun') {
       v.mark = { walls: true, arrowX: (GAP_X0 + GAP_X1) / 2, arrowY: above,
         box: { x: 0, y: LAYER_Y - MOUND_H, w: MOUND_W, h: MOUND_H } };
@@ -3463,8 +3855,8 @@ const TEXT = {
   },
   stone: {
     title: 'BATU',
-    body: 'BATU KAKU, TIDAK RONTOK. JATUHKAN DI ATAS LUBANG!',
-    good: 'BATU TETAP UTUH DAN JADI JEMBATAN!',
+    body: 'SEKARANG BALOK BATU. JATUHKAN DI ATAS LUBANG YANG SAMA!',
+    good: 'PASIR RONTOK, BATU TETAP UTUH: BATU KAKU!',
   },
   gun: {
     title: 'MESIU',
@@ -3487,6 +3879,7 @@ const { Achievements } = __mod["achievements"];
 const { Leaderboard, validName } = __mod["leaderboard"];
 const { Tutorial } = __mod["tutorial"];
 const { CFG, colorsForLevel, levelConfig } = __mod["config"];
+const { t, getLang, setLang, onLangChange, applyDom, LANGS, LANG_NAMES } = __mod["i18n"];
 
 const STEP = 1 / 60;
 
@@ -3527,10 +3920,10 @@ const renderer = new Renderer(canvas, events);
 const lb = new Leaderboard();
 const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', legend: 'TROFI LEGENDA!', secret: 'TROFI RAHASIA!' };
 const ach = new Achievements(events, (def) => {
-  renderer.showToast(TIER_TITLE[def.tier] || 'PRESTASI!', def.name, def.tier);
+  renderer.showToast(t(TIER_TITLE[def.tier] || 'PRESTASI!'), t(def.name), def.tier);
   sfx.achievement(def.tier);
   // prestasi berhadiah (tema) → beri tahu di mana hadiahnya bisa dipakai
-  if (def.reward) setTimeout(() => renderer.showToast('HADIAH TERBUKA', `${def.reward} DI PENGATURAN`), 2700);
+  if (def.reward) setTimeout(() => renderer.showToast(t('HADIAH TERBUKA'), t('{r} DI PENGATURAN', { r: t(def.reward) })), 2700);
 });
 
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
@@ -3546,9 +3939,19 @@ setSoundMode(store.get('soundMode', store.get('muted', false) ? 'off' : 'all'));
 ui.soundMode = getSoundMode();
 ui.muted = ui.soundMode === 'off';
 const SOUND_LABEL = { all: 'MUSIK + EFEK', sfx: 'EFEK SAJA', off: 'MATI' };
+// nama bahasa di pemilih bahasa selalu ditulis dalam bahasanya sendiri
+const LANG_LABELS = { id: 'BAHASA INDONESIA', en: 'ENGLISH' };
 // musik yang diputar per layar
-const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', settings: 'title', help: 'title', play: 'game', pause: 'game', tutDone: 'game', over: null };
-renderer.setPalette(store.get('palette', 'default'));
+const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', settings: 'title', help: 'title', lang: 'title', play: 'game', pause: 'game', tutDone: 'game', over: null };
+// Tema: palet kanvas + warna modal HTML (kotak nama, KREDIT) supaya modal ikut tema yang aktif.
+function applyPalette(name) {
+  renderer.setPalette(name);
+  const P = renderer.pal, root = document.documentElement.style;
+  const vars = { bg: P.bg, shadow: P.shadow, frame: P.frame, text: P.text, dim: P.dim, accent: P.accent, danger: P.danger };
+  for (const [k, v] of Object.entries(vars)) root.setProperty(`--m-${k}`, v);
+  root.setProperty('--m-overlay', P.overlay || '8,7,14');
+}
+applyPalette(store.get('palette', 'default'));
 
 // Menu dengan isi dinamis (pause, settings) dihitung di menuItems().
 const MENUS = {
@@ -3583,7 +3986,7 @@ function uiNav(cmd) {
   else if (cmd === 'up') { ui.focus = (ui.focus + items.length - 1) % items.length; sfx.cursor(); }
   else if (cmd === 'ok') { sfx.click(); activate(items[ui.focus]); }
   else if (cmd === 'back') {
-    if (ui.screen === 'board' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'help') { sfx.back(); activate('back'); }
+    if (ui.screen === 'board' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'help' || ui.screen === 'lang') { sfx.back(); activate('back'); }
     else if (ui.screen === 'over' || ui.screen === 'tutDone') { sfx.back(); activate('menu'); }
   }
 }
@@ -3602,7 +4005,11 @@ const SCROLL_KEYS = { PageUp: -1, PageDown: 1, Home: -Infinity, End: Infinity };
 function onUiKey(e) {
   if (nameBox.classList.contains('show')) return;
   if (creditsOpen()) {
-    if (e.code === 'Escape' || e.code === 'Backspace' || e.code === 'Enter') { e.preventDefault(); closeCredits(); }
+    // Spasi diblokir input.js (supaya halaman tidak menggulir), jadi tombol yang fokus tidak "terklik"
+    // sendiri: Enter/Spasi pada link yang dipilih dengan Tab membuka link itu, selain itu menutup KREDIT.
+    const link = document.activeElement && document.activeElement.closest && document.activeElement.closest('#credits a');
+    if ((e.code === 'Enter' || e.code === 'Space') && link) { e.preventDefault(); link.click(); return; }
+    if (e.code === 'Escape' || e.code === 'Backspace' || e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); closeCredits(); }
     return;
   }
   unlockAudio();
@@ -3610,6 +4017,7 @@ function onUiKey(e) {
   if (e.code === 'KeyM') { toggleMute(); return; }
   if (e.code === 'KeyF') { toggleFullscreen(); return; }
   if (e.code === 'KeyH' && ui.screen === 'title') { sfx.click(); activate('help'); return; }
+  if (e.code === 'KeyL' && ui.screen === 'title') { sfx.click(); activate('lang'); return; }
 
   if (ui.screen === 'play') {
     if (e.code === 'KeyP' || e.code === 'Escape') pause();
@@ -3766,7 +4174,7 @@ function startGame() {
     game.eventTimer = Math.min(game.eventTimer, game.randRange(levelConfig(TEST.level).eventGap));
     if (levelConfig(TEST.level).boss) game.queueBossEvent(TEST.level);
   }
-  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR DAN PRESTASI TIDAK DISIMPAN');
+  if (TEST.on) renderer.showToast(t('MODE UJI'), t('SKOR DAN PRESTASI TIDAK DISIMPAN'));
   ach.sessionNew = 0;
   ui.over = null;
   ui.lbStatus = '';
@@ -3852,12 +4260,15 @@ function activate(id) {
       break;
     case 'ach': ui.ach = ach.list(); setScreen('ach'); break;
     case 'theme': toggleTheme(); break;
-    case 'name': askName(() => renderer.showToast('NAMA DISIMPAN', lb.name)); break;   // ganti nama (pengaturan)
+    case 'lang': openLang(); break;
+    case 'lang_id': case 'lang_en': setLang(id.slice(5)); closeLang(); break;
+    case 'name': askName(() => renderer.showToast(t('NAMA DISIMPAN'), lb.name)); break;   // ganti nama (pengaturan)
     case 'sound': toggleMute(); break;
     case 'settings': setScreen('settings'); break;
     case 'credits': openCredits(); break;
     case 'back':
-      if (ui.screen === 'board' && ui.fromOver) { setScreen('over'); ui.focus = 1; }
+      if (ui.screen === 'lang') closeLang();
+      else if (ui.screen === 'board' && ui.fromOver) { setScreen('over'); ui.focus = 1; }
       else goTitle();
       break;
     case 'tabWeekly': loadBoard('weekly'); break;
@@ -3878,7 +4289,7 @@ function toggleMute() {
   ui.muted = ui.soundMode === 'off';
   store.set('soundMode', ui.soundMode);
   // di layar jeda/pengaturan labelnya sudah terlihat di menu, jadi tidak perlu toast
-  if (ui.screen !== 'pause' && ui.screen !== 'settings') renderer.showToast('SUARA', SOUND_LABEL[ui.soundMode]);
+  if (ui.screen !== 'pause' && ui.screen !== 'settings') renderer.showToast(t('SUARA'), t(SOUND_LABEL[ui.soundMode]));
   sfx.toggle();
 }
 
@@ -3926,7 +4337,7 @@ function checkAlvinWebsite() {
   fetch('https://alvinzanua.site', { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal })
     .catch(() => {
       web.classList.add('down');
-      web.textContent = 'WEBSITE (OFFLINE)';
+      web.textContent = t('WEBSITE (OFFLINE)');
       web.parentElement.appendChild(web); // Instagram jadi pilihan pertama
     })
     .finally(() => clearTimeout(timer));
@@ -3936,16 +4347,31 @@ function titleItems() { return MENUS.title; }
 // Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
   if (screen === 'pause') return tutorial.active ? ['resume', 'skipTut', 'menu'] : ['resume', 'restart', 'sound', 'theme', 'menu'];
-  if (screen === 'settings') return ['sound', 'theme', 'name', 'back'];
+  if (screen === 'settings') return ['sound', 'theme', 'lang', 'name', 'back'];
+  if (screen === 'lang') return LANGS.map((l) => `lang_${l}`);
   return MENUS[screen];
 }
 function toggleTheme() {
   const open = THEMES.filter(themeUnlocked);
   const i = open.findIndex((t) => t.id === renderer.paletteName);
   const next = open[(i + 1) % open.length].id;
-  renderer.setPalette(next);
+  applyPalette(next);
   store.set('palette', next);
 }
+
+// Pilih bahasa: modal dari tombol globe di layar judul, menu Pengaturan, atau tombol L.
+// Kembali ke layar asal setelah memilih (atau klik di luar kotak / Esc).
+function openLang() {
+  ui.langFrom = ui.screen === 'settings' ? 'settings' : 'title';
+  setScreen('lang');
+  ui.focus = Math.max(0, LANGS.indexOf(getLang()));
+}
+function closeLang() {
+  setScreen(ui.langFrom || 'title');
+  if (ui.langFrom === 'settings') ui.focus = menuItems('settings').indexOf('lang');
+}
+onLangChange(() => applyDom());
+applyDom();
 
 function toggleFullscreen() {
   try {
@@ -3990,7 +4416,7 @@ events.on('spawn', (p) => {
   const seen = store.get('seenMats', []);
   if (seen.includes(p.mat)) return;
   store.set('seenMats', [...seen, p.mat]);
-  renderer.showToast(intro[0], intro[1]);
+  renderer.showToast(t(intro[0]), t(intro[1]));
   sfx.material();
 });
 events.on('clear', (d) => sfx.clear(d.chain, centerX(d.cells)));
@@ -4008,7 +4434,7 @@ function onGameOver(stats) {
     // mode uji: hasil hanya ditampilkan, tidak masuk rekor, skor lokal, atau peringkat
     ui.over = { ...stats, newBest: false, newAch: 0 };
     overTimer = 0.9;
-    ui.lbStatus = 'MODE UJI - SKOR TIDAK DISIMPAN';
+    ui.lbStatus = t('MODE UJI - SKOR TIDAK DISIMPAN');
     ui.lbStatusColor = renderer.pal.dim;
     return;
   }
@@ -4019,7 +4445,7 @@ function onGameOver(stats) {
   lb.saveLocal(stats);
   if (stats.score > 0 && stats.duration >= 5) {
     if (!lb.name) {
-      ui.lbStatus = 'ISI NAMA UNTUK PERINGKAT';
+      ui.lbStatus = t('ISI NAMA UNTUK PERINGKAT');
       ui.lbStatusColor = null;
       setTimeout(() => askName(() => submitScore(stats)), 900);
     } else submitScore(stats);
@@ -4027,25 +4453,25 @@ function onGameOver(stats) {
 }
 
 async function submitScore(stats) {
-  ui.lbStatus = 'MENGIRIM SKOR...';
+  ui.lbStatus = t('MENGIRIM SKOR...');
   ui.lbStatusColor = null;
   const r = await lb.submit(stats);
   const P = renderer.pal;
   if (r.ok) {
-    ui.lbStatus = r.newBest ? `REKOR MINGGU INI! #${r.rankWeekly}` : `PERINGKAT MINGGU INI #${r.rankWeekly}`;
+    ui.lbStatus = t(r.newBest ? 'REKOR MINGGU INI! #{n}' : 'PERINGKAT MINGGU INI #{n}', { n: r.rankWeekly });
     ui.lbStatusColor = r.newBest ? P.accent : P.text;
   } else if (r.offline) {
-    ui.lbStatus = 'OFFLINE - DISIMPAN LOKAL';
+    ui.lbStatus = t('OFFLINE - DISIMPAN LOKAL');
     ui.lbStatusColor = P.danger;
   } else if (r.code === 'NAME_TAKEN' || r.code === 'BAD_NAME') {
-    ui.lbStatus = 'NAMA SUDAH DIPAKAI';
+    ui.lbStatus = t('NAMA SUDAH DIPAKAI');
     ui.lbStatusColor = P.danger;
-    askName(() => submitScore(stats), 'Nama itu sudah dipakai pemain lain.');
+    askName(() => submitScore(stats), t('Nama itu sudah dipakai pemain lain.'));
   } else if (r.code === 'RATE_LIMIT') {
-    ui.lbStatus = 'TERLALU CEPAT, COBA LAGI';
+    ui.lbStatus = t('TERLALU CEPAT, COBA LAGI');
     ui.lbStatusColor = P.danger;
   } else {
-    ui.lbStatus = 'SKOR TIDAK TERCATAT';
+    ui.lbStatus = t('SKOR TIDAK TERCATAT');
     ui.lbStatusColor = P.danger;
   }
 }
@@ -4067,12 +4493,12 @@ function closeName() {
 nameForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = nameInput.value.trim().replace(/\s+/g, ' ');
-  if (!validName(name)) { nameErr.textContent = 'Nama 2-16 karakter: huruf, angka, spasi, _ atau -'; return; }
-  nameErr.textContent = 'Memeriksa nama...';
+  if (!validName(name)) { nameErr.textContent = t('Nama 2-16 karakter: huruf, angka, spasi, _ atau -'); return; }
+  nameErr.textContent = t('Memeriksa nama...');
   try {
     const r = await lb.claimName(name);
     if (!r.success) {
-      nameErr.textContent = r.code === 'NAME_TAKEN' ? 'Nama itu sudah dipakai pemain lain.' : (r.code === 'NO_DB' ? 'Server peringkat belum siap.' : 'Nama tidak valid.');
+      nameErr.textContent = t(r.code === 'NAME_TAKEN' ? 'Nama itu sudah dipakai pemain lain.' : (r.code === 'NO_DB' ? 'Server peringkat belum siap.' : 'Nama tidak valid.'));
       if (r.code !== 'NO_DB') return;
     }
   } catch {
@@ -4088,17 +4514,17 @@ nameForm.addEventListener('submit', async (e) => {
 // sudah dipakai pemain lain, skor tetap disimpan dan pemain diminta memilih nama baru.
 async function flushPendingScore() {
   const r = await lb.flushPending();
-  if (r === 'sent') renderer.showToast('SKOR TERTUNDA', 'MASUK PERINGKAT');
+  if (r === 'sent') renderer.showToast(t('SKOR TERTUNDA'), t('MASUK PERINGKAT'));
   else if (r === 'name' && !nameBox.classList.contains('show')) {
     askName(flushPendingScore, lb.name
-      ? `Nama "${lb.name}" sudah dipakai pemain lain. Pilih nama baru supaya skor tertundamu tersimpan.`
-      : 'Isi nama supaya skor tertundamu tersimpan.');
+      ? t('Nama "{name}" sudah dipakai pemain lain. Pilih nama baru supaya skor tertundamu tersimpan.', { name: lb.name })
+      : t('Isi nama supaya skor tertundamu tersimpan.'));
   }
 }
 nameSkip.addEventListener('click', () => {
   closeName();
   nameDone = null;
-  ui.lbStatus = 'SKOR TIDAK DIKIRIM';
+  ui.lbStatus = t('SKOR TIDAK DIKIRIM');
   ui.lbStatusColor = renderer.pal.dim;
 });
 
@@ -4213,7 +4639,10 @@ function frame(now) {
   ui.themeName = (THEMES.find((t) => t.id === ui.theme) || THEMES[0]).name;
   // di Pengaturan: beri tahu kalau masih ada tema yang bisa dibuka lewat prestasi
   const locked = THEMES.filter((t) => !themeUnlocked(t)).length;
-  ui.themeHint = locked ? `${locked} TEMA LAGI: HADIAH PRESTASI` : '';
+  ui.themeHint = locked ? t('{n} TEMA LAGI: HADIAH PRESTASI', { n: locked }) : '';
+  ui.langName = LANG_NAMES[getLang()];
+  ui.settingsItems = menuItems('settings');
+  ui.langOptions = LANGS.map((l) => ({ id: `lang_${l}`, label: LANG_LABELS[l], current: l === getLang() }));
   renderer.draw(dt, ui);
   requestAnimationFrame(frame);
 }

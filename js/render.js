@@ -1,6 +1,8 @@
 import { W, H, BLOCK, CFG, MAT_STONE, MAT_GUN, isBossLevel } from './config.js';
 import { SHAPES } from './pieces.js';
-import { drawText, textWidthPx, drawBlockText, blockTextWidth } from './font.js';
+import { drawText, textWidthPx, drawBlockText, blockTextWidth, ICON_ROWS } from './font.js';
+import { t } from './i18n.js';
+import { formatDuration } from './leaderboard.js';
 
 // Gambar pixel art (papan, pasir, kotak UI) di kanvas kecil 160x176 lalu diperbesar dengan skala bulat.
 // Teks digambar terpisah langsung di resolusi layar dengan font 5x7 → lebih kecil & mudah dibaca.
@@ -172,7 +174,7 @@ export class Renderer {
         }
       }
       const [cx, cy] = d.centers[0] || [W / 2, H / 2];
-      this.addFloat(d.stones > 0 ? 'BATU HANCUR!' : 'LEDAKAN!', BX + cx, BY + cy - 10, '#ffb347', 1.2);
+      this.addFloat(t(d.stones > 0 ? 'BATU HANCUR!' : 'LEDAKAN!'), BX + cx, BY + cy - 10, '#ffb347', 1.2);
     });
   }
 
@@ -317,7 +319,7 @@ export class Renderer {
     ctx.translate(sx, sy);
     this.ox = sx; this.oy = sy;
 
-    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'start' || ui.screen === 'help' || (ui.screen === 'board' && !ui.fromOver)) {
+    if (ui.screen === 'title' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'start' || ui.screen === 'help' || ui.screen === 'lang' || (ui.screen === 'board' && !ui.fromOver)) {
       this.drawRain(ctx, dt);
     } else {
       this.drawBoard(ctx, g);
@@ -351,6 +353,7 @@ export class Renderer {
       case 'settings': this.drawSettings(ctx, ui); break;
       case 'start': this.drawStart(ctx); break;
       case 'help': this.drawHelp(ctx, ui); break;
+      case 'lang': this.drawLangModal(ctx, ui); break;
       case 'tutDone': this.drawTutDone(ctx, ui); break;
     }
     this.drawToast(ctx, dt);
@@ -532,24 +535,24 @@ export class Renderer {
           }
         }
       }
-      if (g.next.mat === MAT_STONE) this.txt('BATU', PX + 29, y + 6, P.text);
-      else if (g.next.mat === MAT_GUN) this.txt('MESIU', PX + 29, y + 6, this.speck.s);
+      if (g.next.mat === MAT_STONE) this.txt(t('BATU'), PX + 29, y + 6, P.text);
+      else if (g.next.mat === MAT_GUN) this.txt(t('MESIU'), PX + 29, y + 6, this.speck.s);
     }
     y += 22;
 
-    label('SKOR'); value(g.score);
-    label('TERBAIK'); value(Math.max(ui.best, g.score), P.dim);
+    label(t('SKOR')); value(g.score);
+    label(t('TERBAIK')); value(Math.max(ui.best, g.score), P.dim);
     // level boss: angka LEVEL memakai warna boss tema (kontras >= 5:1 dengan latar, beda dari teks & aksen)
     label('LEVEL'); value(g.level + (g.breather > 0 ? ' ~' : ''), isBossLevel(g.level) ? P.boss : P.text);
     label('CHAIN'); value(g.chain > 0 ? 'X' + g.chain : '-', g.chain > 1 ? P.accent : P.text);
 
     // meter miring
-    label('MIRING');
-    const t = g.tilt, bw = 54;
+    label(t('MIRING'));
+    const tl = g.tilt, bw = 54;
     ctx.fillStyle = P.shadow; ctx.fillRect(PX, y, bw, 5);
-    const low = t.meter < CFG.TILT_MIN_START && !t.active;
-    ctx.fillStyle = t.active ? (Math.floor(this.time * 12) % 2 ? '#ffffff' : P.accent) : low ? P.danger : P.accent;
-    ctx.fillRect(PX, y, Math.round(bw * t.meter), 5);
+    const low = tl.meter < CFG.TILT_MIN_START && !tl.active;
+    ctx.fillStyle = tl.active ? (Math.floor(this.time * 12) % 2 ? '#ffffff' : P.accent) : low ? P.danger : P.accent;
+    ctx.fillRect(PX, y, Math.round(bw * tl.meter), 5);
     y += 11;
 
     // warna aktif
@@ -560,8 +563,8 @@ export class Renderer {
 
     // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
     if (this.k >= 2 && !ui.touch) {   // di layar sangat kecil teks bantuan tidak muat
-      this.txt('TAHAN Q/E MIRING', PX, 144, P.dim);
-      this.txt('P JEDA  M SUARA', PX, 151, P.dim);
+      this.txt(t('TAHAN Q/E MIRING'), PX, 144, P.dim);
+      this.txt(t('P JEDA  M SUARA'), PX, 151, P.dim);
     }
     this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
   }
@@ -575,13 +578,13 @@ export class Renderer {
     let line1, line2 = '', col;
     if (e.phase === 'warn') {
       const pulse = Math.floor(this.time * 6) % 2 === 0;
-      line1 = `${EVENT_NAMES[e.type]} ${e.type === 'quake' ? '' : arrow}`.trim();
-      line2 = `DALAM ${Math.ceil(e.t)}`;
+      line1 = `${t(EVENT_NAMES[e.type])} ${e.type === 'quake' ? '' : arrow}`.trim();
+      line2 = t('DALAM {n}', { n: Math.ceil(e.t) });
       col = pulse ? P.accent : P.text;
     } else {
-      line1 = e.type === 'quake' ? 'GEMPA!' : `${EVENT_NAMES[e.type]} ${arrow}`;
-      if (e.type === 'force') line2 = ui.touch ? `TAHAN ${e.dir > 0 ? 'L' : 'R'} MELAWAN` : `TAHAN ${e.dir > 0 ? 'Q' : 'E'} MELAWAN`;
-      if (e.type === 'wind') line2 = 'PIECE TERDORONG';
+      line1 = e.type === 'quake' ? t('GEMPA!') : `${t(EVENT_NAMES[e.type])} ${arrow}`;
+      if (e.type === 'force') line2 = t('TAHAN {k} MELAWAN', { k: ui.touch ? (e.dir > 0 ? 'L' : 'R') : (e.dir > 0 ? 'Q' : 'E') });
+      if (e.type === 'wind') line2 = t('PIECE TERDORONG');
       col = P.danger;
     }
     const y = BY + 22;
@@ -739,65 +742,70 @@ export class Renderer {
 
   drawStart(ctx) {
     this.drawLogo(ctx, 50);
-    if (Math.floor(this.time * 2) % 2 === 0) this.txt('KLIK / TAP UNTUK MULAI', LW / 2, 110, this.pal.text, 1, 'center');
+    if (Math.floor(this.time * 2) % 2 === 0) this.txt(t('KLIK / TAP UNTUK MULAI'), LW / 2, 110, this.pal.text, 1, 'center');
   }
 
   drawTitle(ctx, ui) {
     const P = this.pal;
     this.drawLogo(ctx, 24);
-    this.txt('TETRIS PASIR YANG BISA MIRING', LW / 2, 46, P.dim, 1, 'center');
+    this.txt(t('TETRIS PASIR YANG BISA MIRING'), LW / 2, 46, P.dim, 1, 'center');
     this.helpIcon(ctx, ui);
     const items = (ui.titleItems || ['play', 'board', 'ach', 'settings']).map((id) => [id, this.menuLabel(id, ui)]);
     // 5 item (dengan KREDIT): mulai sedikit lebih atas & lebih rapat supaya tidak menabrak teks TERBAIK
     this.menu(ctx, ui, items, items.length > 4 ? 58 : 64, 84, items.length > 4 ? 13 : items.length > 3 ? 14 : 15);
-    this.txt(`TERBAIK: ${ui.best}`, LW / 2, 124, P.accent, 1, 'center');
-    if (ui.playerName) this.txt(`PEMAIN: ${ui.playerName}`, LW / 2, 132, P.dim, 1, 'center');
+    this.txt(t('TERBAIK: {n}', { n: ui.best }), LW / 2, 124, P.accent, 1, 'center');
+    if (ui.playerName) this.txt(t('PEMAIN: {name}', { name: ui.playerName }), LW / 2, 132, P.dim, 1, 'center');
     // Petunjuk tombol keyboard hanya di desktop; di HP tombolnya sudah terlihat di layar.
     if (!ui.touch) {
       const space = { k: 'space', w: 25 };
       // Dibuat kecil & pudar supaya tidak bersaing dengan menu (petunjuk lengkap ada di layar ? / CARA MAIN).
       const HINT_ALPHA = 0.5;
-      this.keyHints(ctx, 145, [{ k: 'left' }, { k: 'right' }, 'GESER', 5, { k: 'up' }, 'PUTAR', 5, space, 'JATUH'], null, false, HINT_ALPHA, true);
-      this.keyHints(ctx, 154, ['TAHAN', { k: 'Q' }, '/', { k: 'E' }, 'MIRING', 5, { k: 'P' }, 'JEDA'], null, false, HINT_ALPHA, true);
+      this.keyHints(ctx, 145, [{ k: 'left' }, { k: 'right' }, t('GESER'), 5, { k: 'up' }, t('PUTAR'), 5, space, t('JATUH')], null, false, HINT_ALPHA, true);
+      this.keyHints(ctx, 154, [t('TAHAN'), { k: 'Q' }, '/', { k: 'E' }, t('MIRING'), 5, { k: 'P' }, t('JEDA')], null, false, HINT_ALPHA, true);
     }
     if (ui.soundMode && ui.soundMode !== 'all') {
-      this.txt(ui.soundMode === 'off' ? 'SUARA: MATI' : 'MUSIK: MATI', LW / 2, 168, P.dim, 1, 'center');
+      this.txt(t(ui.soundMode === 'off' ? 'SUARA: MATI' : 'MUSIK: MATI'), LW / 2, 168, P.dim, 1, 'center');
     }
   }
 
   // Label menu bersama (judul, jeda, pengaturan).
   menuLabel(id, ui) {
     const SOUND = { all: 'SEMUA', sfx: 'EFEK SAJA', off: 'MATI' };
+    const LABEL = {
+      play: 'MAIN', board: 'PERINGKAT', ach: 'PRESTASI', settings: 'PENGATURAN', credits: 'KREDIT',
+      tutorial: 'MAIN TUTORIAL', skipTut: 'LEWATI TUTORIAL', resume: 'LANJUT', restart: 'ULANG',
+      menu: 'MENU UTAMA', back: 'KEMBALI',
+    };
     switch (id) {
-      case 'play': return 'MAIN';
-      case 'board': return 'PERINGKAT';
-      case 'ach': return 'PRESTASI';
-      case 'settings': return 'PENGATURAN';
-      case 'credits': return 'KREDIT';
-      case 'tutorial': return 'MAIN TUTORIAL';
-      case 'skipTut': return 'LEWATI TUTORIAL';
-      case 'resume': return 'LANJUT';
-      case 'restart': return 'ULANG';
-      case 'menu': return 'MENU UTAMA';
-      case 'back': return 'KEMBALI';
-      case 'name': return ui.playerName ? `NAMA: ${ui.playerName}` : 'ISI NAMA';
-      case 'sound': return `SUARA: ${SOUND[ui.soundMode] || 'SEMUA'}`;
-      case 'theme': return `TEMA: ${ui.themeName || 'KLASIK'}`;
-      default: return id.toUpperCase();
+      case 'name': return ui.playerName ? t('NAMA: {name}', { name: ui.playerName }) : t('ISI NAMA');
+      case 'sound': return t('SUARA: {v}', { v: t(SOUND[ui.soundMode] || 'SEMUA') });
+      case 'theme': return t('TEMA: {v}', { v: t(ui.themeName || 'KLASIK') });
+      case 'lang': return t('BAHASA: {v}', { v: ui.langName || 'INDONESIA' });
+      default: return LABEL[id] ? t(LABEL[id]) : id.toUpperCase();
     }
   }
 
-  // Tombol bantuan "?" di pojok kanan atas layar judul (keyboard: H).
+  // Pojok kanan atas layar judul: tombol bantuan "?" (keyboard: H) dan di kirinya tombol globe
+  // untuk ganti bahasa (keyboard: L).
   helpIcon(ctx, ui) {
-    const P = this.pal, x = LW - 15, y = 4, s = 11;
-    this.buttons.push({ id: 'help', x: x - 3, y: y - 3, w: s + 6, h: s + 6 });   // area sentuh sedikit lebih besar
-    ctx.fillStyle = P.frame;
-    ctx.fillRect(x + 1, y, s - 2, s);
-    ctx.fillRect(x, y + 1, s, s - 2);
-    ctx.fillStyle = P.shadow;
-    ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
-    this.txt('?', x + s / 2, y + (s - this.th()) / 2, P.accent, 1, 'center');
-    if (!ui.touch) this.txt('H', x - 3, y + (s - this.th()) / 2, P.dim, 1, 'right');
+    // ICON: skala glyph ikon (sama untuk keduanya → ketebalan garis globe & "?" tetap sama)
+    const P = this.pal, y = 4, s = 11, ICON = 0.75;
+    const box = (id, x) => {
+      this.buttons.push({ id, x: x - 2, y: y - 3, w: s + 4, h: s + 6 });   // area sentuh sedikit lebih besar
+      ctx.fillStyle = P.frame;
+      ctx.fillRect(x + 1, y, s - 2, s);
+      ctx.fillRect(x, y + 1, s, s - 2);
+      ctx.fillStyle = P.shadow;
+      ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
+    };
+    const hx = LW - s - 3;
+    box('help', hx);
+    const iy = y + (s - this.th(ICON) * ICON_ROWS / 7) / 2;   // ikon 13 baris, dipusatkan di kotak
+    this.txt('⍰', hx + s / 2, iy, P.accent, ICON, 'center');
+    const gx = hx - s - 3;
+    box('lang', gx);
+    // globe & tanda tanya = glyph font setinggi ICON_ROWS → ukuran & ketebalan garisnya sama
+    this.txt('◎', gx + s / 2, iy, P.accent, ICON, 'center');
   }
 
   // CARA MAIN: modal di atas layar judul (bukan halaman baru). Isi rata tengah, kotak di tengah layar.
@@ -809,13 +817,13 @@ export class Renderer {
     this.dim(ctx, 0.7);
     this.buttons.push({ id: 'back', x: 0, y: 0, w: LW, h: LH });   // area luar kotak
 
-    const tilt = ui.touch ? 'TAHAN L / R' : 'TAHAN Q / E';
+    const tilt = t(ui.touch ? 'TAHAN L / R' : 'TAHAN Q / E');
     const items = [
-      'BALOK YANG MENDARAT HANCUR JADI PASIR.',
-      'SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN: JEMBATAN HILANG, DAPAT SKOR.',
-      `${tilt} UNTUK MEMIRINGKAN PAPAN. PASIR IKUT MENGALIR.`,
-      'MESIU MELEDAK SAAT KENA CLEAR. BATU KAKU, TIDAK LONGSOR.',
-      'PASIR LEWAT GARIS MERAH ATAS = KALAH.',
+      t('BALOK YANG MENDARAT HANCUR JADI PASIR.'),
+      t('SAMBUNG SATU WARNA DARI DINDING KIRI KE KANAN: JEMBATAN HILANG, DAPAT SKOR.'),
+      t('{tilt} UNTUK MEMIRINGKAN PAPAN. PASIR IKUT MENGALIR.', { tilt }),
+      t('MESIU MELEDAK SAAT KENA CLEAR. BATU KAKU, TIDAK LONGSOR.'),
+      t('PASIR LEWAT GARIS MERAH ATAS = KALAH.'),
     ];
     const BW = 146, PAD = 6, MW = BW - 2 * PAD, LINE = 7, GAP = 6, DEMO = 22;
     const wrapped = items.map((t) => this.wrap(t, MW));
@@ -830,7 +838,7 @@ export class Renderer {
 
     const cx = LW / 2;
     let y = by + PAD;
-    this.txt('CARA MAIN', cx, y, P.accent, 1.5, 'center');
+    this.txt(t('CARA MAIN'), cx, y, P.accent, 1.5, 'center');
     y += titleH;
     wrapped.forEach((lines, k) => {
       for (const line of lines) { this.txt(line, cx, y, P.text, 1, 'center'); y += LINE; }
@@ -848,6 +856,37 @@ export class Renderer {
     ids.forEach((id, k) => {
       this.button(ctx, id, this.menuLabel(id, ui), x, Math.round(y), bws[k], 11, ui.focus === k);
       x += bws[k] + gap;
+    });
+  }
+
+  // PILIH BAHASA: modal di atas layar asalnya (judul atau pengaturan). Klik/tap di luar kotak = tutup.
+  // Bahasa yang sedang dipakai ditandai titik di kiri namanya.
+  drawLangModal(ctx, ui) {
+    const P = this.pal;
+    if (ui.langFrom === 'settings') this.drawSettings(ctx, { ...ui, focus: -1, menuItems: ui.settingsItems });
+    else this.drawTitle(ctx, { ...ui, focus: -1, menuItems: null });
+    this.buttons = [];                             // layar di belakang tidak bisa diklik selama modal terbuka
+    this.dim(ctx, 0.7);
+    this.buttons.push({ id: 'back', x: 0, y: 0, w: LW, h: LH });   // area luar kotak
+
+    const opts = ui.langOptions || [];
+    const BW = 112, PAD = 7, ROW = 15, titleH = this.th(1.5) + 8;
+    const BH = PAD + titleH + opts.length * ROW + 2 + PAD;
+    const bx = Math.floor((LW - BW) / 2), by = Math.floor((LH - BH) / 2);
+    this.layer();
+    this.buttons.push({ id: 'none', x: bx, y: by, w: BW, h: BH });
+    ctx.fillStyle = P.frame; ctx.fillRect(bx, by, BW, BH);
+    ctx.fillStyle = P.bg; ctx.fillRect(bx + 1, by + 1, BW - 2, BH - 2);
+    this.txt(t('BAHASA'), LW / 2, by + PAD, P.accent, 1.5, 'center');
+    const y0 = by + PAD + titleH;
+    const bw = BW - 2 * PAD - 8;
+    opts.forEach((o, k) => {
+      const x = Math.floor((LW - bw) / 2), y = y0 + k * ROW;
+      this.button(ctx, o.id, o.label, x, y, bw, 11, ui.focus === k);
+      if (o.current) {                             // penanda bahasa aktif
+        ctx.fillStyle = ui.focus === k ? P.bg : P.accent;
+        ctx.fillRect(x + 4, y + 4, 3, 3);
+      }
     });
   }
 
@@ -939,40 +978,40 @@ export class Renderer {
     });
     y += 4;
     for (const row of v.keys) { this.keyHints(ctx, y, row.parts, PX, row.done); y += 12; }
-    this.txt(ui.touch ? 'MENU: LEWATI' : 'ESC: LEWATI', PX, 158, P.dim);
+    this.txt(t(ui.touch ? 'MENU: LEWATI' : 'ESC: LEWATI'), PX, 158, P.dim);
     this.txt('SANDTILT', PX, 165, P.frame, 1, 'left', false);
   }
 
   drawTutDone(ctx, ui) {
     const P = this.pal;
     this.dim(ctx, 0.86);
-    this.txt('SIAP MAIN!', LW / 2, 24, P.accent, 2, 'center');
+    this.txt(t('SIAP MAIN!'), LW / 2, 24, P.accent, 2, 'center');
     let y = 48;
     const lines = [
-      'JANGAN BIARKAN PASIR LEWAT GARIS MERAH ATAS.',
-      'GANGGUAN (GEMPA, ANGIN, PAPAN MIRING) SELALU DIPERINGATKAN 3 DETIK SEBELUMNYA.',
+      t('JANGAN BIARKAN PASIR LEWAT GARIS MERAH ATAS.'),
+      t('GANGGUAN (GEMPA, ANGIN, PAPAN MIRING) SELALU DIPERINGATKAN 3 DETIK SEBELUMNYA.'),
     ];
     for (const text of lines) {
       for (const line of this.wrap(text, LW - 24)) { this.txt(line, LW / 2, y, P.text, 1, 'center'); y += 8; }
       y += 5;
     }
-    const items = (ui.menuItems || ['play', 'menu']).map((id) => [id, id === 'play' ? 'MAIN SEKARANG' : this.menuLabel(id, ui)]);
+    const items = (ui.menuItems || ['play', 'menu']).map((id) => [id, id === 'play' ? t('MAIN SEKARANG') : this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 110, 96, 15);
   }
 
   drawPause(ctx, ui) {
     this.dim(ctx);
-    this.txt('JEDA', LW / 2, 40, this.pal.text, 2, 'center');
+    this.txt(t('JEDA'), LW / 2, 40, this.pal.text, 2, 'center');
     const items = (ui.menuItems || ['resume', 'restart', 'menu']).map((id) => [id, this.menuLabel(id, ui)]);
     this.menu(ctx, ui, items, 62, 96, 15);
   }
 
   drawSettings(ctx, ui) {
     this.dim(ctx, 0.6);
-    this.txt('PENGATURAN', LW / 2, 30, this.pal.text, 2, 'center');
+    this.txt(t('PENGATURAN'), LW / 2, 26, this.pal.text, 2, 'center');
     const items = (ui.menuItems || ['sound', 'back']).map((id) => [id, this.menuLabel(id, ui)]);
-    this.menu(ctx, ui, items, 60, 96, 15);
-    if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 130, this.pal.dim, 1, 'center');
+    this.menu(ctx, ui, items, 50, 104, 15);   // 5 item: suara, tema, bahasa, nama, kembali
+    if (ui.themeHint) this.txt(ui.themeHint, LW / 2, 50 + items.length * 15 + 4, this.pal.dim, 1, 'center');
   }
 
   drawOver(ctx, ui) {
@@ -981,7 +1020,7 @@ export class Renderer {
     this.txt('GAME OVER', LW / 2, 12, P.danger, 2, 'center');
     let y = 34;
     const row = (k, v, col = P.text) => {
-      this.txt(k, 24, y, P.dim);
+      this.txt(t(k), 24, y, P.dim);
       this.txt(v, 136, y, col, 1, 'right');
       y += 9;
     };
@@ -989,26 +1028,26 @@ export class Renderer {
     row('CHAIN TERBAIK', o.bestChain ?? 0);
     row('LEVEL', o.level ?? 1);
     row('BUTIR DIHAPUS', o.grains ?? 0);
-    row('DURASI', `${o.duration ?? 0} DTK`);
+    row('DURASI', t('{n} DTK', { n: o.duration ?? 0 }));
     y += 3;
-    if (o.newBest) { this.txt('REKOR PRIBADI BARU!', LW / 2, y, P.accent, 1, 'center'); y += 9; }
+    if (o.newBest) { this.txt(t('REKOR PRIBADI BARU!'), LW / 2, y, P.accent, 1, 'center'); y += 9; }
     if (ui.lbStatus) { this.txt(ui.lbStatus, LW / 2, y, ui.lbStatusColor || P.text, 1, 'center'); y += 9; }
-    if (o.newAch > 0) this.txt(`${o.newAch} PRESTASI BARU`, LW / 2, y, P.dim, 1, 'center');
-    this.menu(ctx, ui, [['restart', 'MAIN LAGI'], ['board', 'PERINGKAT'], ['menu', 'MENU']], 120);
+    if (o.newAch > 0) this.txt(t('{n} PRESTASI BARU', { n: o.newAch }), LW / 2, y, P.dim, 1, 'center');
+    this.menu(ctx, ui, [['restart', t('MAIN LAGI')], ['board', t('PERINGKAT')], ['menu', t('MENU')]], 120);
   }
 
   drawLeaderboard(ctx, ui) {
     const P = this.pal, lb = ui.lb || {};
     if (ui.fromOver) this.dim(ctx, 0.92);
-    this.txt('PERINGKAT', LW / 2, 8, P.text, 2, 'center');   // jarak lega dari tepi atas, rapat ke tab
-    this.button(ctx, 'tabWeekly', 'MINGGU INI', 6, 20, 72, 11, lb.tab === 'weekly');
-    this.button(ctx, 'tabAll', 'SEPANJANG MASA', 82, 20, 72, 11, lb.tab === 'alltime');
+    this.txt(t('PERINGKAT'), LW / 2, 8, P.text, 2, 'center');   // jarak lega dari tepi atas, rapat ke tab
+    this.button(ctx, 'tabWeekly', t('MINGGU INI'), 6, 20, 72, 11, lb.tab === 'weekly');
+    this.button(ctx, 'tabAll', t('SEPANJANG MASA'), 82, 20, 72, 11, lb.tab === 'alltime');
 
     if (lb.loading) {
-      this.txt('MEMUAT...', LW / 2, 80, P.dim, 1, 'center');
+      this.txt(t('MEMUAT...'), LW / 2, 80, P.dim, 1, 'center');
     } else if (!lb.rows || lb.rows.length === 0) {
-      this.txt('BELUM ADA SKOR', LW / 2, 70, P.dim, 1, 'center');
-      this.txt('JADILAH YANG PERTAMA!', LW / 2, 80, P.dim, 1, 'center');
+      this.txt(t('BELUM ADA SKOR'), LW / 2, 70, P.dim, 1, 'center');
+      this.txt(t('JADILAH YANG PERTAMA!'), LW / 2, 80, P.dim, 1, 'center');
     } else {
       // Sampai 100 baris, bisa digulir. Kalau pemain di luar daftar (peringkat 100+),
       // barisnya ditaruh langsung di bawah baris terakhir, dipisah titik-titik.
@@ -1041,21 +1080,21 @@ export class Renderer {
         ctx.fillStyle = P.dim;
         for (let dx = -6; dx <= 6; dx += 6) ctx.fillRect(LX + LWD / 2 + dx, y + 2, 1, 1);
         y += SEP;
-        row(pinned.rank, { name: pinned.name || 'KAMU', score: pinned.score, me: true }, y, pinned.rank - 1);
+        row(pinned.rank, { name: pinned.name || t('KAMU'), score: pinned.score, me: true }, y, pinned.rank - 1);
       }
       this.endScroll(ctx, ui);
     }
-    const info = lb.offline ? 'OFFLINE - SKOR LOKAL' : (lb.tab === 'weekly' && lb.resetIn ? `RESET DALAM ${lb.resetIn}` : '');
+    const info = lb.offline ? t('OFFLINE - SKOR LOKAL') : (lb.tab === 'weekly' && lb.resetInSec != null ? t('RESET DALAM {t}', { t: formatDuration(lb.resetInSec) }) : '');
     if (info) this.txt(info, LW / 2, 149, lb.offline ? P.danger : P.dim, 1, 'center');
-    this.menu(ctx, { focus: 0 }, [['back', 'KEMBALI']], 160, 60);
+    this.menu(ctx, { focus: 0 }, [['back', t('KEMBALI')]], 160, 60);
   }
 
   drawAchievements(ctx, ui) {
     const P = this.pal;
     this.dim(ctx, 0.6);
-    this.txt('PRESTASI', LW / 2, 8, P.text, 2, 'center');    // jarak lega dari tepi atas, rapat ke daftar
+    this.txt(t('PRESTASI'), LW / 2, 8, P.text, 2, 'center');    // jarak lega dari tepi atas, rapat ke daftar
     const list = ui.ach || [];
-    this.txt(`TROFI ${list.filter((a) => a.unlocked).length}/${list.length}`, LW / 2, 20, P.dim, 1, 'center');
+    this.txt(t('TROFI {a}/{b}', { a: list.filter((a) => a.unlocked).length, b: list.length }), LW / 2, 20, P.dim, 1, 'center');
     // Satu kartu per prestasi: trofi di kiri, nama + deskripsi (dibungkus kalau kepanjangan).
     // Yang sudah terbuka diberi garis warna tingkat trofinya di tepi kiri.
     const LX = 6, LY = 27, LWD = 144, LHT = 127, GAP = 3, TX = LX + 20;
@@ -1063,11 +1102,11 @@ export class Renderer {
       const show = a.unlocked || !a.hidden;
       // Kartu maksimal 3 baris: nama + deskripsi + hadiah. Deskripsi boleh 2 baris hanya kalau tidak ada hadiah;
       // kalau tetap kepanjangan, deskripsi diperkecil jadi satu baris (cadangan, deskripsi idealnya <= 30 huruf).
-      const desc = show ? a.desc : 'RAHASIA', maxW = LX + LWD - 3 - TX;
+      const desc = t(show ? a.desc : 'RAHASIA'), maxW = LX + LWD - 3 - TX;
       let lines = this.wrap(desc, maxW);
       if (lines.length > (a.reward ? 1 : 2)) lines = [{ text: desc, size: Math.min(1, maxW / this.tw(desc)) }];
       // hadiah (mis. tema) selalu ditulis, juga untuk prestasi rahasia → pemain tahu ada yang bisa dikejar
-      if (a.reward) lines.push({ reward: `HADIAH: ${a.reward}` });
+      if (a.reward) lines.push({ reward: t('HADIAH: {r}', { r: t(a.reward) }) });
       return { a, show, lines, h: 10 + lines.length * 7 };
     });
     const contentH = cards.reduce((sum, c) => sum + c.h + GAP, -GAP);
@@ -1081,7 +1120,7 @@ export class Renderer {
           ctx.fillRect(LX, y, 2, h);
         }
         this.drawTrophy(ctx, a.unlocked ? a.tier : 'locked', LX + 5, y + Math.floor((h - 11) / 2));
-        this.txt(show ? a.name : '???', TX, y + 3, a.unlocked ? P.text : P.dim);
+        this.txt(show ? t(a.name) : '???', TX, y + 3, a.unlocked ? P.text : P.dim);
         lines.forEach((ln, i) => {
           if (ln.reward) this.txt(ln.reward, TX, y + 9.5 + i * 7, a.unlocked ? P.accent : P.text);
           else if (ln.text) this.txt(ln.text, TX, y + 9.5 + i * 7, P.dim, ln.size);
@@ -1091,7 +1130,7 @@ export class Renderer {
       y += h + GAP;
     }
     this.endScroll(ctx, ui);
-    this.menu(ctx, { focus: 0 }, [['back', 'KEMBALI']], 160, 60);
+    this.menu(ctx, { focus: 0 }, [['back', t('KEMBALI')]], 160, 60);
   }
 
   drawToast(ctx, dt) {

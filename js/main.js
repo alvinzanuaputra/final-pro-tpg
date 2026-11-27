@@ -7,6 +7,7 @@ import { Achievements } from './achievements.js';
 import { Leaderboard, validName } from './leaderboard.js';
 import { Tutorial } from './tutorial.js';
 import { CFG, colorsForLevel, levelConfig } from './config.js';
+import { t, getLang, setLang, onLangChange, applyDom, LANGS, LANG_NAMES } from './i18n.js';
 
 const STEP = 1 / 60;
 
@@ -47,10 +48,10 @@ const renderer = new Renderer(canvas, events);
 const lb = new Leaderboard();
 const TIER_TITLE = { bronze: 'TROFI PERUNGGU!', silver: 'TROFI PERAK!', gold: 'TROFI EMAS!', legend: 'TROFI LEGENDA!', secret: 'TROFI RAHASIA!' };
 const ach = new Achievements(events, (def) => {
-  renderer.showToast(TIER_TITLE[def.tier] || 'PRESTASI!', def.name, def.tier);
+  renderer.showToast(t(TIER_TITLE[def.tier] || 'PRESTASI!'), t(def.name), def.tier);
   sfx.achievement(def.tier);
   // prestasi berhadiah (tema) → beri tahu di mana hadiahnya bisa dipakai
-  if (def.reward) setTimeout(() => renderer.showToast('HADIAH TERBUKA', `${def.reward} DI PENGATURAN`), 2700);
+  if (def.reward) setTimeout(() => renderer.showToast(t('HADIAH TERBUKA'), t('{r} DI PENGATURAN', { r: t(def.reward) })), 2700);
 });
 
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
@@ -66,9 +67,19 @@ setSoundMode(store.get('soundMode', store.get('muted', false) ? 'off' : 'all'));
 ui.soundMode = getSoundMode();
 ui.muted = ui.soundMode === 'off';
 const SOUND_LABEL = { all: 'MUSIK + EFEK', sfx: 'EFEK SAJA', off: 'MATI' };
+// nama bahasa di pemilih bahasa selalu ditulis dalam bahasanya sendiri
+const LANG_LABELS = { id: 'BAHASA INDONESIA', en: 'ENGLISH' };
 // musik yang diputar per layar
-const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', settings: 'title', help: 'title', play: 'game', pause: 'game', tutDone: 'game', over: null };
-renderer.setPalette(store.get('palette', 'default'));
+const SCREEN_MUSIC = { title: 'title', board: 'title', ach: 'title', settings: 'title', help: 'title', lang: 'title', play: 'game', pause: 'game', tutDone: 'game', over: null };
+// Tema: palet kanvas + warna modal HTML (kotak nama, KREDIT) supaya modal ikut tema yang aktif.
+function applyPalette(name) {
+  renderer.setPalette(name);
+  const P = renderer.pal, root = document.documentElement.style;
+  const vars = { bg: P.bg, shadow: P.shadow, frame: P.frame, text: P.text, dim: P.dim, accent: P.accent, danger: P.danger };
+  for (const [k, v] of Object.entries(vars)) root.setProperty(`--m-${k}`, v);
+  root.setProperty('--m-overlay', P.overlay || '8,7,14');
+}
+applyPalette(store.get('palette', 'default'));
 
 // Menu dengan isi dinamis (pause, settings) dihitung di menuItems().
 const MENUS = {
@@ -103,7 +114,7 @@ function uiNav(cmd) {
   else if (cmd === 'up') { ui.focus = (ui.focus + items.length - 1) % items.length; sfx.cursor(); }
   else if (cmd === 'ok') { sfx.click(); activate(items[ui.focus]); }
   else if (cmd === 'back') {
-    if (ui.screen === 'board' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'help') { sfx.back(); activate('back'); }
+    if (ui.screen === 'board' || ui.screen === 'ach' || ui.screen === 'settings' || ui.screen === 'help' || ui.screen === 'lang') { sfx.back(); activate('back'); }
     else if (ui.screen === 'over' || ui.screen === 'tutDone') { sfx.back(); activate('menu'); }
   }
 }
@@ -122,7 +133,11 @@ const SCROLL_KEYS = { PageUp: -1, PageDown: 1, Home: -Infinity, End: Infinity };
 function onUiKey(e) {
   if (nameBox.classList.contains('show')) return;
   if (creditsOpen()) {
-    if (e.code === 'Escape' || e.code === 'Backspace' || e.code === 'Enter') { e.preventDefault(); closeCredits(); }
+    // Spasi diblokir input.js (supaya halaman tidak menggulir), jadi tombol yang fokus tidak "terklik"
+    // sendiri: Enter/Spasi pada link yang dipilih dengan Tab membuka link itu, selain itu menutup KREDIT.
+    const link = document.activeElement && document.activeElement.closest && document.activeElement.closest('#credits a');
+    if ((e.code === 'Enter' || e.code === 'Space') && link) { e.preventDefault(); link.click(); return; }
+    if (e.code === 'Escape' || e.code === 'Backspace' || e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); closeCredits(); }
     return;
   }
   unlockAudio();
@@ -130,6 +145,7 @@ function onUiKey(e) {
   if (e.code === 'KeyM') { toggleMute(); return; }
   if (e.code === 'KeyF') { toggleFullscreen(); return; }
   if (e.code === 'KeyH' && ui.screen === 'title') { sfx.click(); activate('help'); return; }
+  if (e.code === 'KeyL' && ui.screen === 'title') { sfx.click(); activate('lang'); return; }
 
   if (ui.screen === 'play') {
     if (e.code === 'KeyP' || e.code === 'Escape') pause();
@@ -286,7 +302,7 @@ function startGame() {
     game.eventTimer = Math.min(game.eventTimer, game.randRange(levelConfig(TEST.level).eventGap));
     if (levelConfig(TEST.level).boss) game.queueBossEvent(TEST.level);
   }
-  if (TEST.on) renderer.showToast('MODE UJI', 'SKOR DAN PRESTASI TIDAK DISIMPAN');
+  if (TEST.on) renderer.showToast(t('MODE UJI'), t('SKOR DAN PRESTASI TIDAK DISIMPAN'));
   ach.sessionNew = 0;
   ui.over = null;
   ui.lbStatus = '';
@@ -372,12 +388,15 @@ function activate(id) {
       break;
     case 'ach': ui.ach = ach.list(); setScreen('ach'); break;
     case 'theme': toggleTheme(); break;
-    case 'name': askName(() => renderer.showToast('NAMA DISIMPAN', lb.name)); break;   // ganti nama (pengaturan)
+    case 'lang': openLang(); break;
+    case 'lang_id': case 'lang_en': setLang(id.slice(5)); closeLang(); break;
+    case 'name': askName(() => renderer.showToast(t('NAMA DISIMPAN'), lb.name)); break;   // ganti nama (pengaturan)
     case 'sound': toggleMute(); break;
     case 'settings': setScreen('settings'); break;
     case 'credits': openCredits(); break;
     case 'back':
-      if (ui.screen === 'board' && ui.fromOver) { setScreen('over'); ui.focus = 1; }
+      if (ui.screen === 'lang') closeLang();
+      else if (ui.screen === 'board' && ui.fromOver) { setScreen('over'); ui.focus = 1; }
       else goTitle();
       break;
     case 'tabWeekly': loadBoard('weekly'); break;
@@ -398,7 +417,7 @@ function toggleMute() {
   ui.muted = ui.soundMode === 'off';
   store.set('soundMode', ui.soundMode);
   // di layar jeda/pengaturan labelnya sudah terlihat di menu, jadi tidak perlu toast
-  if (ui.screen !== 'pause' && ui.screen !== 'settings') renderer.showToast('SUARA', SOUND_LABEL[ui.soundMode]);
+  if (ui.screen !== 'pause' && ui.screen !== 'settings') renderer.showToast(t('SUARA'), t(SOUND_LABEL[ui.soundMode]));
   sfx.toggle();
 }
 
@@ -446,7 +465,7 @@ function checkAlvinWebsite() {
   fetch('https://alvinzanua.site', { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal })
     .catch(() => {
       web.classList.add('down');
-      web.textContent = 'WEBSITE (OFFLINE)';
+      web.textContent = t('WEBSITE (OFFLINE)');
       web.parentElement.appendChild(web); // Instagram jadi pilihan pertama
     })
     .finally(() => clearTimeout(timer));
@@ -456,16 +475,31 @@ function titleItems() { return MENUS.title; }
 // Isi menu per layar. Jeda & pengaturan selalu memuat SUARA dan TEMA.
 function menuItems(screen) {
   if (screen === 'pause') return tutorial.active ? ['resume', 'skipTut', 'menu'] : ['resume', 'restart', 'sound', 'theme', 'menu'];
-  if (screen === 'settings') return ['sound', 'theme', 'name', 'back'];
+  if (screen === 'settings') return ['sound', 'theme', 'lang', 'name', 'back'];
+  if (screen === 'lang') return LANGS.map((l) => `lang_${l}`);
   return MENUS[screen];
 }
 function toggleTheme() {
   const open = THEMES.filter(themeUnlocked);
   const i = open.findIndex((t) => t.id === renderer.paletteName);
   const next = open[(i + 1) % open.length].id;
-  renderer.setPalette(next);
+  applyPalette(next);
   store.set('palette', next);
 }
+
+// Pilih bahasa: modal dari tombol globe di layar judul, menu Pengaturan, atau tombol L.
+// Kembali ke layar asal setelah memilih (atau klik di luar kotak / Esc).
+function openLang() {
+  ui.langFrom = ui.screen === 'settings' ? 'settings' : 'title';
+  setScreen('lang');
+  ui.focus = Math.max(0, LANGS.indexOf(getLang()));
+}
+function closeLang() {
+  setScreen(ui.langFrom || 'title');
+  if (ui.langFrom === 'settings') ui.focus = menuItems('settings').indexOf('lang');
+}
+onLangChange(() => applyDom());
+applyDom();
 
 function toggleFullscreen() {
   try {
@@ -510,7 +544,7 @@ events.on('spawn', (p) => {
   const seen = store.get('seenMats', []);
   if (seen.includes(p.mat)) return;
   store.set('seenMats', [...seen, p.mat]);
-  renderer.showToast(intro[0], intro[1]);
+  renderer.showToast(t(intro[0]), t(intro[1]));
   sfx.material();
 });
 events.on('clear', (d) => sfx.clear(d.chain, centerX(d.cells)));
@@ -528,7 +562,7 @@ function onGameOver(stats) {
     // mode uji: hasil hanya ditampilkan, tidak masuk rekor, skor lokal, atau peringkat
     ui.over = { ...stats, newBest: false, newAch: 0 };
     overTimer = 0.9;
-    ui.lbStatus = 'MODE UJI - SKOR TIDAK DISIMPAN';
+    ui.lbStatus = t('MODE UJI - SKOR TIDAK DISIMPAN');
     ui.lbStatusColor = renderer.pal.dim;
     return;
   }
@@ -539,7 +573,7 @@ function onGameOver(stats) {
   lb.saveLocal(stats);
   if (stats.score > 0 && stats.duration >= 5) {
     if (!lb.name) {
-      ui.lbStatus = 'ISI NAMA UNTUK PERINGKAT';
+      ui.lbStatus = t('ISI NAMA UNTUK PERINGKAT');
       ui.lbStatusColor = null;
       setTimeout(() => askName(() => submitScore(stats)), 900);
     } else submitScore(stats);
@@ -547,25 +581,25 @@ function onGameOver(stats) {
 }
 
 async function submitScore(stats) {
-  ui.lbStatus = 'MENGIRIM SKOR...';
+  ui.lbStatus = t('MENGIRIM SKOR...');
   ui.lbStatusColor = null;
   const r = await lb.submit(stats);
   const P = renderer.pal;
   if (r.ok) {
-    ui.lbStatus = r.newBest ? `REKOR MINGGU INI! #${r.rankWeekly}` : `PERINGKAT MINGGU INI #${r.rankWeekly}`;
+    ui.lbStatus = t(r.newBest ? 'REKOR MINGGU INI! #{n}' : 'PERINGKAT MINGGU INI #{n}', { n: r.rankWeekly });
     ui.lbStatusColor = r.newBest ? P.accent : P.text;
   } else if (r.offline) {
-    ui.lbStatus = 'OFFLINE - DISIMPAN LOKAL';
+    ui.lbStatus = t('OFFLINE - DISIMPAN LOKAL');
     ui.lbStatusColor = P.danger;
   } else if (r.code === 'NAME_TAKEN' || r.code === 'BAD_NAME') {
-    ui.lbStatus = 'NAMA SUDAH DIPAKAI';
+    ui.lbStatus = t('NAMA SUDAH DIPAKAI');
     ui.lbStatusColor = P.danger;
-    askName(() => submitScore(stats), 'Nama itu sudah dipakai pemain lain.');
+    askName(() => submitScore(stats), t('Nama itu sudah dipakai pemain lain.'));
   } else if (r.code === 'RATE_LIMIT') {
-    ui.lbStatus = 'TERLALU CEPAT, COBA LAGI';
+    ui.lbStatus = t('TERLALU CEPAT, COBA LAGI');
     ui.lbStatusColor = P.danger;
   } else {
-    ui.lbStatus = 'SKOR TIDAK TERCATAT';
+    ui.lbStatus = t('SKOR TIDAK TERCATAT');
     ui.lbStatusColor = P.danger;
   }
 }
@@ -587,12 +621,12 @@ function closeName() {
 nameForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = nameInput.value.trim().replace(/\s+/g, ' ');
-  if (!validName(name)) { nameErr.textContent = 'Nama 2-16 karakter: huruf, angka, spasi, _ atau -'; return; }
-  nameErr.textContent = 'Memeriksa nama...';
+  if (!validName(name)) { nameErr.textContent = t('Nama 2-16 karakter: huruf, angka, spasi, _ atau -'); return; }
+  nameErr.textContent = t('Memeriksa nama...');
   try {
     const r = await lb.claimName(name);
     if (!r.success) {
-      nameErr.textContent = r.code === 'NAME_TAKEN' ? 'Nama itu sudah dipakai pemain lain.' : (r.code === 'NO_DB' ? 'Server peringkat belum siap.' : 'Nama tidak valid.');
+      nameErr.textContent = t(r.code === 'NAME_TAKEN' ? 'Nama itu sudah dipakai pemain lain.' : (r.code === 'NO_DB' ? 'Server peringkat belum siap.' : 'Nama tidak valid.'));
       if (r.code !== 'NO_DB') return;
     }
   } catch {
@@ -608,17 +642,17 @@ nameForm.addEventListener('submit', async (e) => {
 // sudah dipakai pemain lain, skor tetap disimpan dan pemain diminta memilih nama baru.
 async function flushPendingScore() {
   const r = await lb.flushPending();
-  if (r === 'sent') renderer.showToast('SKOR TERTUNDA', 'MASUK PERINGKAT');
+  if (r === 'sent') renderer.showToast(t('SKOR TERTUNDA'), t('MASUK PERINGKAT'));
   else if (r === 'name' && !nameBox.classList.contains('show')) {
     askName(flushPendingScore, lb.name
-      ? `Nama "${lb.name}" sudah dipakai pemain lain. Pilih nama baru supaya skor tertundamu tersimpan.`
-      : 'Isi nama supaya skor tertundamu tersimpan.');
+      ? t('Nama "{name}" sudah dipakai pemain lain. Pilih nama baru supaya skor tertundamu tersimpan.', { name: lb.name })
+      : t('Isi nama supaya skor tertundamu tersimpan.'));
   }
 }
 nameSkip.addEventListener('click', () => {
   closeName();
   nameDone = null;
-  ui.lbStatus = 'SKOR TIDAK DIKIRIM';
+  ui.lbStatus = t('SKOR TIDAK DIKIRIM');
   ui.lbStatusColor = renderer.pal.dim;
 });
 
@@ -733,7 +767,10 @@ function frame(now) {
   ui.themeName = (THEMES.find((t) => t.id === ui.theme) || THEMES[0]).name;
   // di Pengaturan: beri tahu kalau masih ada tema yang bisa dibuka lewat prestasi
   const locked = THEMES.filter((t) => !themeUnlocked(t)).length;
-  ui.themeHint = locked ? `${locked} TEMA LAGI: HADIAH PRESTASI` : '';
+  ui.themeHint = locked ? t('{n} TEMA LAGI: HADIAH PRESTASI', { n: locked }) : '';
+  ui.langName = LANG_NAMES[getLang()];
+  ui.settingsItems = menuItems('settings');
+  ui.langOptions = LANGS.map((l) => ({ id: `lang_${l}`, label: LANG_LABELS[l], current: l === getLang() }));
   renderer.draw(dt, ui);
   requestAnimationFrame(frame);
 }

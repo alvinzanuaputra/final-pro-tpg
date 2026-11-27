@@ -19,34 +19,34 @@
     <div id="console" class="console landscape">
       <section class="area-screen">
           <div id="slot" class="slot">
-            <canvas id="screen" aria-label="SandTilt - tetris pasir"></canvas>
+            <canvas id="screen" aria-label="SandTilt - tetris pasir" data-i18n-aria></canvas>
           </div>
       </section>
 
       <!-- Jempol kiri: bahu L (miring kiri) + D-pad (▲ jatuh instan, ◀ ▶ geser, ▼ turun pelan) -->
-      <section class="pad pad-left" aria-label="Kontrol kiri">
-        <button class="shoulder" data-btn="l" aria-label="Miring kiri (tahan)"><b>L</b><span>MIRING</span></button>
-        <div class="dpad" role="group" aria-label="Arah">
-          <button class="d d-up" data-btn="up" aria-label="Jatuh instan"><span class="dl">JATUH</span></button>
-          <button class="d d-left" data-btn="left" aria-label="Geser kiri"></button>
+      <section class="pad pad-left" aria-label="Kontrol kiri" data-i18n-aria>
+        <button class="shoulder" data-btn="l" aria-label="Miring kiri (tahan)" data-i18n-aria><b>L</b><span data-i18n>MIRING</span></button>
+        <div class="dpad" role="group" aria-label="Arah" data-i18n-aria>
+          <button class="d d-up" data-btn="up" aria-label="Jatuh instan" data-i18n-aria><span class="dl" data-i18n>JATUH</span></button>
+          <button class="d d-left" data-btn="left" aria-label="Geser kiri" data-i18n-aria></button>
           <span class="d d-mid"></span>
-          <button class="d d-right" data-btn="right" aria-label="Geser kanan"></button>
-          <button class="d d-down" data-btn="down" aria-label="Turun pelan"><span class="dl">TURUN</span></button>
+          <button class="d d-right" data-btn="right" aria-label="Geser kanan" data-i18n-aria></button>
+          <button class="d d-down" data-btn="down" aria-label="Turun pelan" data-i18n-aria><span class="dl" data-i18n>TURUN</span></button>
         </div>
       </section>
 
       <!-- Jempol kanan: bahu R (miring kanan) + A putar / B putar balik -->
-      <section class="pad pad-right" aria-label="Kontrol kanan">
-        <button class="shoulder" data-btn="r" aria-label="Miring kanan (tahan)"><span>MIRING</span><b>R</b></button>
+      <section class="pad pad-right" aria-label="Kontrol kanan" data-i18n-aria>
+        <button class="shoulder" data-btn="r" aria-label="Miring kanan (tahan)" data-i18n-aria><span data-i18n>MIRING</span><b>R</b></button>
         <div class="ab">
-          <div class="ab-btn ab-b"><button class="round" data-btn="b" aria-label="Putar balik">B</button><span>BALIK</span></div>
-          <div class="ab-btn ab-a"><button class="round" data-btn="a" aria-label="Putar">A</button><span>PUTAR</span></div>
+          <div class="ab-btn ab-b"><button class="round" data-btn="b" aria-label="Putar balik" data-i18n-aria>B</button><span data-i18n>BALIK</span></div>
+          <div class="ab-btn ab-a"><button class="round" data-btn="a" aria-label="Putar" data-i18n-aria>A</button><span data-i18n>PUTAR</span></div>
         </div>
       </section>
 
       <!-- Satu tombol MENU: jeda, suara, tema, keluar -->
       <section class="pad-mid">
-        <div class="sys-btn"><button class="pill" data-btn="menu" aria-label="Menu (jeda & pengaturan)"></button><span>MENU</span></div>
+        <div class="sys-btn"><button class="pill" data-btn="menu" aria-label="Menu (jeda & pengaturan)" data-i18n-aria></button><span>MENU</span></div>
       </section>
     </div>
   </main>
@@ -55,26 +55,26 @@
   <!-- Modal nama pemain: menutupi seluruh layar (termasuk tombol sentuh) -->
   <div id="namebox" class="overlay modal" role="dialog" aria-modal="true" aria-labelledby="nametitle">
     <form id="nameform" class="panel" autocomplete="off">
-      <h2 id="nametitle">NAMA PEMAIN</h2>
-      <p>Nama ini tampil di papan peringkat.</p>
-      <input id="nameinput" maxlength="16" spellcheck="false" autocapitalize="characters" enterkeyhint="done" placeholder="2-16 karakter">
+      <h2 id="nametitle" data-i18n>NAMA PEMAIN</h2>
+      <p data-i18n>Nama ini tampil di papan peringkat.</p>
+      <input id="nameinput" maxlength="16" spellcheck="false" autocapitalize="characters" enterkeyhint="done" placeholder="2-16 karakter" data-i18n-ph>
       <p id="nameerr" class="err"></p>
       <div class="btns">
-        <button type="submit">SIMPAN</button>
-        <button type="button" id="nameskip">LEWATI</button>
+        <button type="submit" data-i18n>SIMPAN</button>
+        <button type="button" id="nameskip" data-i18n>LEWATI</button>
       </div>
     </form>
   </div>
   <!-- Layar KREDIT (dibuka dari menu judul). HTML supaya foto jernih & link sosmed bisa diklik. -->
   <div id="credits" class="overlay modal" role="dialog" aria-modal="true" aria-labelledby="creditstitle">
     <div class="panel credits">
-      <h2 id="creditstitle">KREDIT</h2>
-      <p class="credits-game"><b>SANDTILT</b> &middot; tetris pasir yang bisa miring</p>
-      <p class="credits-course">Final Project Teknik Pengembangan Game (TPG) 2026</p>
+      <h2 id="creditstitle" data-i18n>KREDIT</h2>
+      <p class="credits-game" data-i18n><b>SANDTILT</b> &middot; tetris pasir yang bisa miring</p>
+      <p class="credits-course" data-i18n>Final Project Teknik Pengembangan Game (TPG) 2026</p>
 
-      <h3>PEMBUAT</h3>
+      <h3 data-i18n>PEMBUAT</h3>
       <div class="dev">
-        <img src="assets/image/foto-alvin-zoom.jpg" alt="Foto Alvin Zanua Putra" width="72" height="72" loading="lazy">
+        <img src="assets/image/foto-alvin-zoom.jpg" alt="Foto Alvin Zanua Putra" data-i18n-alt width="72" height="72" loading="lazy">
         <div class="dev-info">
           <b>Alvin Zanua Putra</b>
           <span>NRP 5025231064</span>
@@ -85,7 +85,7 @@
         </div>
       </div>
       <div class="dev">
-        <img src="assets/image/foto-azhar.jpg" alt="Foto Muhammad Azhar Aziz" width="72" height="72" loading="lazy">
+        <img src="assets/image/foto-azhar.jpg" alt="Foto Muhammad Azhar Aziz" data-i18n-alt width="72" height="72" loading="lazy">
         <div class="dev-info">
           <b>Muhammad Azhar Aziz</b>
           <span>NRP 5025231131</span>
@@ -95,15 +95,15 @@
         </div>
       </div>
 
-      <h3>ASET</h3>
+      <h3 data-i18n>ASET</h3>
       <ul class="credits-assets">
-        <li><b>Efek suara</b> - Kenney: Impact, Interface, Sci-fi Sounds, Digital Audio, Music Jingles (kenney.nl, CC0)</li>
-        <li><b>Font pixel</b> - Kenney Fonts (kenney.nl, CC0)</li>
-        <li><b>Soundtrack chiptune &amp; ikon trofi</b> - dibuat tim SandTilt</li>
-        <li><b>Suara angin &amp; pasir meluncur</b> - dibuat tim dengan ffmpeg</li>
+        <li data-i18n><b>Efek suara</b> - Kenney: Impact, Interface, Sci-fi Sounds, Digital Audio, Music Jingles (kenney.nl, CC0)</li>
+        <li data-i18n><b>Font pixel</b> - Kenney Fonts (kenney.nl, CC0)</li>
+        <li data-i18n><b>Soundtrack chiptune &amp; ikon trofi</b> - dibuat tim SandTilt</li>
+        <li data-i18n><b>Suara angin &amp; pasir meluncur</b> - dibuat tim dengan ffmpeg</li>
       </ul>
 
-      <div class="btns"><button type="button" id="creditsclose">KEMBALI</button></div>
+      <div class="btns"><button type="button" id="creditsclose" data-i18n>KEMBALI</button></div>
     </div>
   </div>
   <!-- sandtilt.js = gabungan semua file js/ (skrip biasa, bukan module) supaya game juga jalan

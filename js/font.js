@@ -64,11 +64,62 @@ const TEXT = compile({
   '>': '01000 00100 00010 00001 00010 00100 01000', '<': '00010 00100 01000 10000 01000 00100 00010',
   '_': '00000 00000 00000 00000 00000 00000 11111', '=': '00000 00000 11111 00000 11111 00000 00000',
   '^': '00100 01010 10001 00000 00000 00000 00000', '~': '00000 00000 01000 10101 00010 00000 00000',
+  // panah & spasi untuk tombol kecil di petunjuk kontrol (ketebalan sama dengan huruf)
+  '←': '00000 00100 01000 11111 01000 00100 00000', '→': '00000 00100 00010 11111 00010 00100 00000',
+  '↑': '00100 01110 10101 00100 00100 00100 00000', '↓': '00000 00100 00100 00100 10101 01110 00100',
 }, 5);
+// Glyph lebar (lebih dari 5 kolom): simbol spasi untuk tombol spasi kecil, serta ikon pojok layar judul:
+// globe 13x13 (pilih bahasa: lingkaran, dua garis bujur melengkung, khatulistiwa, dua garis lintang)
+// dan tanda tanya 9x13 (bantuan). Keduanya setinggi ICON_ROWS dengan garis 1 titik, jadi ukuran &
+// ketebalannya sama. Renderer menggesernya ke atas supaya tetap di tengah tombol.
+const WIDE = { '␣': 11, '◎': 13, '⍰': 9 };
+export const ICON_ROWS = 13;
+const art = (rows) => rows.map((r) => r.replace(/#/g, '1').replace(/\./g, '0')).join(' ');
+Object.assign(TEXT, compile({ '␣': '00000000000 00000000000 00000000000 00000000000 10000000001 10000000001 11111111111' }, 11));
+Object.assign(TEXT, compile({
+  '◎': art([
+    '.....###.....',
+    '...##.#.##...',
+    '..#..#.#..#..',
+    '.###########.',
+    '.#..#...#..#.',
+    '#...#...#...#',
+    '#############',
+    '#...#...#...#',
+    '.#..#...#..#.',
+    '.###########.',
+    '..#..#.#..#..',
+    '...##.#.##...',
+    '.....###.....',
+  ]),
+}, 13));
+Object.assign(TEXT, compile({
+  '⍰': art([
+    '..#####..',
+    '.#.....#.',
+    '#.......#',
+    '#.......#',
+    '........#',
+    '.......#.',
+    '......#..',
+    '.....#...',
+    '....#....',
+    '....#....',
+    '.........',
+    '....#....',
+    '....#....',
+  ]),
+}, 9));
+const adv = (ch) => (WIDE[ch] ?? 5) + 1;
 
 export const GLYPH_W = 5, GLYPH_H = 7, ADVANCE = 6;
 
-export function textWidthPx(str, px) { return str.length === 0 ? 0 : (str.length * ADVANCE - 1) * px; }
+export function textWidthPx(str, px) {
+  if (str.length === 0) return 0;
+  let w = 0;
+  for (const ch of str) w += adv(ch);
+  return (w - 1) * px;
+}
 
 // Gambar teks 5x7. x, y dalam piksel layar; px = ukuran satu titik glyph.
 export function drawText(ctx, str, x, y, color, px, align = 'left') {
@@ -77,9 +128,10 @@ export function drawText(ctx, str, x, y, color, px, align = 'left') {
   else if (align === 'right') x -= textWidthPx(str, px);
   x = Math.round(x); y = Math.round(y);
   ctx.fillStyle = color;
-  for (let n = 0; n < str.length; n++) {
-    const pts = TEXT[str[n]] || TEXT['?'];
-    const ox = x + n * ADVANCE * px;
+  let ox = x;
+  for (const ch of str) {
+    const pts = TEXT[ch] || TEXT['?'];
     for (let k = 0; k < pts.length; k += 2) ctx.fillRect(ox + pts[k] * px, y + pts[k + 1] * px, px, px);
+    ox += adv(ch) * px;
   }
 }

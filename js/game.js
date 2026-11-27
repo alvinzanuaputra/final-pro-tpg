@@ -1,4 +1,4 @@
-import { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig } from './config.js';
+import { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig, clearFlash, bossEventType } from './config.js';
 import { makeRng } from './util.js';
 import { Sand } from './sim.js';
 import { SHAPES, Bag } from './pieces.js';
@@ -13,6 +13,10 @@ export class Game {
 
   reset(seed) {
     this.seed = seed >>> 0;
+    // Aturan yang bisa dimatikan mode tutorial (lihat tutorial.js). Game normal: semua aktif.
+    // fall: null = kecepatan level, 0 = piece melayang (tidak jatuh sendiri), > 0 = detik per baris.
+    // controls: false = input pemain diabaikan (tutorial sedang memperagakan sesuatu).
+    this.rules = { events: true, danger: true, level: true, spawn: true, fall: null, controls: true };
     this.rng = makeRng(this.seed);
     this.sand = new Sand(this.rng);
     this.bag = new Bag(this.rng);
@@ -31,16 +35,23 @@ export class Game {
     this.explosions = 0;
     this.lastSpecial = 0;
 
-    this.tilt = { meter: 1, dir: 0, active: false, used: 0, cool: 0 };
+    this.tilt = { meter: 1, dir: 0, active: false, used: 0, cool: 0, holdStart: 0, lastDir: 0, lastActiveAt: -99 };
     this.prevWant = 0;
     this.lastTiltAt = -99;
-    this.buffer = [];               // aksi yang ditekan saat hitstop, diproses setelahnya
+    this.flipLog = [];              // waktu ganti arah miring terakhir (untuk kocok)
+    this.slosh = 0;                 // sisa detik kocok
+    this.pieceMask = new Uint8Array(W * H);
 
     this.event = null;              // { type: 'quake'|'wind'|'force', dir, phase: 'warn'|'active', t }
     this.eventTimer = this.randRange(CFG.EVENT_FIRST);
     this.eventsSurvived = 0;
+    this.eventBag = [];             // kantong jenis event: tiap 3 event pasti berisi gempa, angin, papan miring
+    this.bossEvent = null;          // jenis event yang pasti muncul karena baru masuk level boss
 
     this.danger = 0;
+    this.overflow = [];             // butir piece yang terkunci di atas papan, menunggu dituang masuk
+    this.pending = null;            // piece berikutnya yang menunggu tempat muncul kosong
+    this.spawnWait = 0;
     this.clearing = null;
     this.dirty = false;
     this.checkTimer = 0;
@@ -73,6 +84,7 @@ export class Game {
 
   // Ruang napas (warna baru masuk): kecepatan memakai level sebelumnya selama CFG.BREATHER detik.
   gravityInterval() {
+    if (this.rules.fall) return this.rules.fall;
     return levelConfig(Math.max(1, this.level - (this.breather > 0 ? 1 : 0))).fall;
   }
 
@@ -92,22 +104,38 @@ export class Game {
     return false;
   }
 
+  // Munculkan piece tertentu (tutorial), menggantikan piece yang sedang jatuh.
+  spawnSpec(spec) {
+    this.next = { mat: MAT_SAND, ...spec };
+    this.lastSpecial = MAT_SAND;
+    this.piece = null;
+    this.spawn();
+  }
+
   spawn() {
-    const spec = this.next;
+    this.pending = this.next;
     this.next = this.makeSpec();
+    this.spawnWait = 0;
+    this.trySpawn();
+  }
+
+  // Munculkan piece yang menunggu. Kalau tempat muncul masih tertutup pasir yang sedang runtuh
+  // (atau masih ada butir antre di atas papan), tunggu dulu; baru kalah kalau tertutup terus
+  // selama CFG.SPAWN_WAIT detik (lihat update).
+  trySpawn() {
+    const spec = this.pending;
     const size = SHAPES[spec.type].size;
-    this.piece = {
+    const p = {
       type: spec.type, color: spec.color, mat: spec.mat, rot: 0,
       x: Math.floor((COLS - size) / 2) * BLOCK,
       y: spec.type === 'I' ? -BLOCK : 0,
       fall: 0, lock: 0, lockResets: 0, softCells: 0,
     };
-    if (this.collides(this.piece, this.piece.x, this.piece.y, 0)) {
-      this.piece = null;
-      this.gameOver('spawn');
-    } else {
-      this.events.emit('spawn', this.piece);
-    }
+    if (this.overflow.length || this.collides(p, p.x, p.y, 0)) { this.piece = null; return false; }
+    this.piece = p;
+    this.pending = null;
+    this.events.emit('spawn', p);
+    return true;
   }
 
   // Y terendah yang bisa dicapai piece (untuk ghost & hard drop).
@@ -122,7 +150,7 @@ export class Game {
     if (!p || this.collides(p, p.x + dx, p.y, p.rot)) return false;
     p.x += dx;
     this.touchLock();
-    this.events.emit('move');
+    this.events.emit('move', dx);
     return true;
   }
 
@@ -136,7 +164,7 @@ export class Game {
       if (!this.collides(p, p.x + kx, p.y + ky, rot)) {
         p.x += kx; p.y += ky; p.rot = rot;
         this.touchLock();
-        this.events.emit('rotate');
+        this.events.emit('rotate', dir);
         return true;
       }
     }
@@ -169,11 +197,18 @@ export class Game {
     const canRun = t.active ? t.meter > 0 : t.meter >= CFG.TILT_MIN_START;
     if (want !== 0 && canRun) {
       if (!t.active || t.dir !== want) {
+        // Ganti arah cepat (arah lama masih aktif sesaat yang lalu) → lempar pasir.
+        const flip = t.lastDir === -want && this.time - t.lastActiveAt <= CFG.FLIP_WINDOW + dt;
+        const hold = t.lastActiveAt - t.holdStart;
         t.active = true;
         t.dir = want;
         t.used++;
+        t.holdStart = this.time;
         this.events.emit('tiltStart', want);
+        if (flip) this.flipTilt(want, hold);
       }
+      t.lastDir = want;
+      t.lastActiveAt = this.time;
       t.meter = Math.max(0, t.meter - dt / CFG.TILT_CAPACITY);
       t.cool = CFG.TILT_REFILL_DELAY;
       this.lastTiltAt = this.time;
@@ -189,6 +224,41 @@ export class Game {
     }
   }
 
+  // Lempar pasir saat ganti arah. Makin lama arah lama ditahan, makin kuat (seperti momentum).
+  // Ganti arah berulang dalam waktu singkat → kocok permukaan (lihat update).
+  flipTilt(dir, hold) {
+    const t = this.tilt;
+    t.meter = Math.max(0, t.meter - CFG.FLIP_COST);
+    const k = Math.min(1, Math.max(0, hold / CFG.FLIP_FULL_HOLD));
+    const strength = CFG.TOSS_BASE + (1 - CFG.TOSS_BASE) * k;
+    const count = Math.round(CFG.TOSS_MIN + (CFG.TOSS_MAX - CFG.TOSS_MIN) * k);
+    const grains = this.sand.toss(dir, strength, count,
+      { height: CFG.TOSS_HEIGHT, speed: CFG.TOSS_SPEED, gravity: CFG.TOSS_GRAVITY });
+    if (grains > 0) this.dirty = true;
+    this.events.emit('tiltFlip', { dir, strength, grains });
+
+    this.flipLog.push(this.time);
+    this.flipLog = this.flipLog.filter((tm) => this.time - tm <= CFG.SLOSH_WINDOW);
+    if (this.flipLog.length >= CFG.SLOSH_FLIPS) {
+      if (this.slosh <= 0) this.events.emit('slosh');
+      this.slosh = CFG.SLOSH_TIME;
+    }
+  }
+
+  // Sel yang ditempati piece aktif, untuk butir melayang (piece dianggap padat).
+  updatePieceMask() {
+    const mask = this.pieceMask;
+    mask.fill(0);
+    const p = this.piece;
+    if (!p) return;
+    for (const [bx, by] of this.blocksOf(p)) {
+      const cx = p.x + bx * BLOCK, cy = p.y + by * BLOCK;
+      for (let yy = Math.max(0, cy); yy < Math.min(H, cy + BLOCK); yy++) {
+        for (let xx = Math.max(0, cx); xx < Math.min(W, cx + BLOCK); xx++) mask[yy * W + xx] = 1;
+      }
+    }
+  }
+
   // Arah miring efektif: tilt pemain digabung event "miring paksa". Melawan arah = saling meniadakan.
   effectiveTilt() {
     const p = this.tilt.active ? this.tilt.dir : 0;
@@ -200,12 +270,12 @@ export class Game {
 
   // Event pengganggu: peringatan dulu, lalu aktif beberapa detik.
   updateEvent(dt) {
+    if (!this.rules.events) return;
     if (!this.event) {
       this.eventTimer -= dt;
       if (this.eventTimer > 0) return;
-      const types = ['quake', 'wind', 'force'];
-      const type = types[Math.floor(this.rng() * types.length)];
-      this.event = { type, dir: this.rng() < 0.5 ? -1 : 1, phase: 'warn', t: CFG.EVENT_WARN, push: 0 };
+      const type = this.nextEventType();
+      this.event ={ type, dir: this.rng() < 0.5 ? -1 : 1, phase: 'warn', t: CFG.EVENT_WARN, push: 0 };
       this.events.emit('eventWarn', this.event);
       return;
     }
@@ -229,22 +299,58 @@ export class Game {
       }
     }
     if (e.t <= 0) {
-      this.events.emit('eventEnd', e);
-      this.event = null;
       this.eventsSurvived++;
-      this.eventTimer = this.randRange(levelConfig(this.level).eventGap);
+      this.events.emit('eventEnd', { ...e, survived: this.eventsSurvived });
+      this.event = null;
+      const gap = this.randRange(levelConfig(this.level).eventGap);
+      // Event boss yang tertunda (level boss tercapai saat event lain berjalan) menyusul cepat.
+      this.eventTimer = this.bossEvent ? Math.min(gap, CFG.BOSS_EVENT_DELAY) : gap;
     }
+  }
+
+  // Jenis event berikutnya. Event boss memakai jenis gilirannya dan diambil dari kantong
+  // kalau masih ada di sana, supaya jaminan "tiap 3 event ada semua jenis" tetap terjaga.
+  nextEventType() {
+    if (this.eventBag.length === 0) {
+      const bag = ['quake', 'wind', 'force'];
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(this.rng() * (i + 1));
+        [bag[i], bag[j]] = [bag[j], bag[i]];
+      }
+      this.eventBag = bag;
+    }
+    if (this.bossEvent) {
+      const type = this.bossEvent;
+      this.bossEvent = null;
+      const i = this.eventBag.indexOf(type);
+      if (i >= 0) this.eventBag.splice(i, 1);
+      return type;
+    }
+    return this.eventBag.pop();
+  }
+
+  // Masuk level boss: event jenis gilirannya pasti muncul BOSS_EVENT_DELAY detik lagi.
+  queueBossEvent(level) {
+    this.bossEvent = bossEventType(level);
+    if (!this.event) this.eventTimer = CFG.BOSS_EVENT_DELAY;
   }
 
   // Piece hancur jadi pasir.
   lockPiece(hard = false) {
+    // Chain = clear beruntun yang dipicu SATU penempatan. Piece baru mendarat → hitungan mulai lagi,
+    // jadi menjatuhkan piece terus-menerus (spam) tidak bisa menaikkan pengali chain.
+    if (this.chain > 0) { this.events.emit('chainEnd', this.chain); this.chain = 0; }
     const p = this.piece;
     const c = this.sand.cells, s = this.sand.shade, m = this.sand.mat;
-    let outOfTop = false;
     for (const [bx, by] of this.blocksOf(p)) {
       const cx = p.x + bx * BLOCK, cy = p.y + by * BLOCK;
       for (let yy = cy; yy < cy + BLOCK; yy++) {
-        if (yy < 0) { outOfTop = true; continue; }
+        if (yy < 0) {
+          // Bagian piece di atas papan tidak langsung kalah: butirnya antre dan dituang masuk begitu
+          // ada ruang (lihat pourOverflow). Kalah/tidaknya diputuskan garis bahaya seperti biasa.
+          for (let xx = cx; xx < cx + BLOCK; xx++) this.overflow.push({ x: xx, color: p.color, mat: p.mat });
+          continue;
+        }
         const row = yy * W;
         for (let xx = cx; xx < cx + BLOCK; xx++) {
           c[row + xx] = p.color;
@@ -258,8 +364,19 @@ export class Game {
     this.dirty = true;
     this.events.emit('land', { x: p.x, y: p.y, color: p.color, mat: p.mat, hard });
     this.piece = null;
-    if (outOfTop) { this.gameOver('lockout'); return; }
-    this.spawn();
+    if (this.rules.spawn) this.spawn();
+  }
+
+  // Tuang butir antrean (bagian piece yang terkunci di atas papan) ke baris teratas yang kosong.
+  pourOverflow() {
+    if (!this.overflow.length) return;
+    const c = this.sand.cells, s = this.sand.shade, m = this.sand.mat;
+    this.overflow = this.overflow.filter((g) => {
+      if (c[g.x] !== 0) return true;
+      c[g.x] = g.color; m[g.x] = g.mat; s[g.x] = (this.rng() * 4) | 0;
+      this.dirty = true;
+      return false;
+    });
   }
 
   startClear(res) {
@@ -281,7 +398,7 @@ export class Game {
     this.grainsCleared += grains;
     this.clears += res.bridges;
 
-    const dur = CFG.CLEAR_FLASH + CFG.CLEAR_FLASH_PER_CHAIN * (this.chain - 1);
+    const dur = clearFlash(this.chain);
     this.clearing = { cells: res.cells, t: dur, t0: dur };
     this.events.emit('clear', {
       points, grains, chain: this.chain, bridges: res.bridges, colors: res.colors,
@@ -290,17 +407,14 @@ export class Game {
     });
 
     const newLevel = 1 + Math.floor(this.clears / CFG.CLEARS_PER_LEVEL);
-    if (newLevel > this.level) {
+    if (newLevel > this.level && this.rules.level) {
       this.level = newLevel;
       const lc = levelConfig(newLevel);
       if (lc.colors > this.numColors) { this.numColors = lc.colors; this.breather = CFG.BREATHER; }
-      // Hitung mundur event ikut jeda level baru: level boss langsung lebih rapat,
-      // level lembah langsung lebih longgar (event yang sedang berjalan tidak diganggu).
-      if (!this.event) {
-        const next = this.randRange(lc.eventGap);
-        if (lc.boss) this.eventTimer = Math.min(this.eventTimer, next);
-        else if (lc.trough) this.eventTimer = Math.max(this.eventTimer, next);
-      }
+      // Level boss: event pasti muncul sebentar lagi. Level lembah: hitung mundur langsung
+      // dilonggarkan ke jeda lembah (event yang sedang berjalan tidak diganggu).
+      if (lc.boss && this.rules.events) this.queueBossEvent(newLevel);
+      else if (lc.trough && !this.event) this.eventTimer = Math.max(this.eventTimer, this.randRange(lc.eventGap));
       this.events.emit('levelUp', { level: this.level, colors: this.numColors, boss: lc.boss, tiltsUsed: this.tilt.used });
     }
   }
@@ -342,18 +456,17 @@ export class Game {
 
     if (this.breather > 0) this.breather -= dt;
 
-    // Hitstop: selama kedip clear, piece & pasir berhenti.
-    // Tombol yang ditekan disimpan dulu supaya tidak hilang.
+    // Hitstop: selama kedip clear, piece & pasir berhenti dan tombol DIABAIKAN (tidak ditumpuk),
+    // supaya setelah kedip piece tidak meloncat karena tekanan yang menumpuk. Tombol yang ditahan
+    // (turun pelan, miring) dibaca lagi dari keadaannya setelah kedip selesai.
     if (this.clearing) {
-      if (input.actions.length) this.buffer.push(...input.actions);
-      if (this.buffer.length > 8) this.buffer.splice(0, this.buffer.length - 8);
       this.clearing.t -= dt;
       if (this.clearing.t <= 0) this.finishClear();
       return;
     }
 
     let actions = input.actions;
-    if (this.buffer.length) { actions = this.buffer.concat(actions); this.buffer = []; }
+    if (!this.rules.controls) { actions = []; input = { actions, soft: false, tilt: 0 }; }
 
     this.updateTilt(dt, input.tilt || 0);
     this.updateEvent(dt);
@@ -382,7 +495,8 @@ export class Game {
     if (p) {
       const normal = BLOCK / this.gravityInterval();
       const speed = input.soft ? Math.max(normal, CFG.SOFT_DROP_SPEED) : normal;
-      p.fall += speed * dt;
+      // fall 0 (tutorial): piece melayang sampai pemain menurunkannya sendiri
+      if (this.rules.fall !== 0 || input.soft) p.fall += speed * dt;
       while (p.fall >= 1) {
         p.fall -= 1;
         if (!this.collides(p, p.x, p.y + 1, p.rot)) {
@@ -397,13 +511,30 @@ export class Game {
       if (this.state !== 'play') return;
     }
 
-    // Simulasi pasir
+    // Simulasi pasir. Sel piece yang sedang jatuh dianggap dinding (lihat Sand.block).
+    this.updatePieceMask();
+    this.sand.block = this.piece ? this.pieceMask : null;
     const e = this.event;
     const quaking = e && e.phase === 'active' && e.type === 'quake';
     const jitter = quaking ? CFG.QUAKE_JITTER : 0;
     if (quaking && this.sand.quakeMix(CFG.QUAKE_SWAPS) > 0) this.dirty = true;
+    if (this.slosh > 0) {
+      this.slosh -= dt;
+      if (this.sand.surfaceMix(CFG.SLOSH_SWAPS, CFG.SLOSH_DEPTH) > 0) this.dirty = true;
+    }
     const moved = this.sand.step(this.effectiveTilt(), jitter);
     if (moved > 0) this.dirty = true;
+    if (this.sand.airborne.length) {
+      const mask = this.pieceMask;
+      if (this.sand.stepAirborne(dt, CFG.TOSS_GRAVITY, (i) => mask[i] === 1) > 0) this.dirty = true;
+    }
+    this.pourOverflow();
+
+    // Piece berikutnya menunggu tempat muncul kosong (pasir yang baru runtuh belum turun).
+    if (this.pending && this.rules.spawn && !this.trySpawn()) {
+      this.spawnWait += dt;
+      if (this.spawnWait >= CFG.SPAWN_WAIT) { this.gameOver('spawn'); return; }
+    }
 
     // Cek jembatan
     this.checkTimer++;
@@ -420,7 +551,7 @@ export class Game {
     }
 
     // Garis bahaya
-    if (this.sand.anyAbove(CFG.DANGER_Y)) {
+    if (this.rules.danger && (this.overflow.length || this.sand.anyAbove(CFG.DANGER_Y))) {
       this.danger += dt;
       if (this.danger >= CFG.DANGER_GRACE) this.gameOver('danger');
     } else this.danger = 0;

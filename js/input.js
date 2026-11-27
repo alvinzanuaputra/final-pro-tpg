@@ -78,4 +78,7 @@ export class Input {
   }
 
   clear() { this.queue = []; }
+
+  // Geser-otomatis mulai lagi dari jeda awal (DAS), seperti tombol baru ditekan.
+  restartRepeat() { for (const a of REPEAT) this.repeat[a] = -CFG.DAS; }
 }

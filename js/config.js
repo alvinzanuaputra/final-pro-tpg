@@ -34,9 +34,29 @@ export const CFG = {
   TILT_REFILL_DELAY: 0.4,          // jeda sebelum meter mulai terisi setelah dilepas
   TILT_MIN_START: 0.1,             // minimal isi meter untuk mulai miring
 
+  // Lempar pasir: tahan miring lalu langsung ganti arah (Q→E / E→Q). Butir permukaan di sisi yang
+  // menumpuk terangkat dan terbang melengkung ke arah baru (pasir & mesiu saja; batu terlalu berat).
+  FLIP_WINDOW: 0.15,               // detik maksimal antara arah lama selesai dan arah baru mulai
+  FLIP_COST: 0.08,                 // potongan meter miring tiap ganti arah (di luar pemakaian biasa)
+  FLIP_FULL_HOLD: 0.6,             // lama tahan arah lama untuk lemparan penuh
+  TOSS_BASE: 0.15,                 // kekuatan minimal (tahan sebentar / spam) → butir hanya melompat kecil
+  TOSS_MIN: 12,                    // butir terangkat pada kekuatan minimal...
+  TOSS_MAX: 100,                   // ...dan pada kekuatan penuh
+  TOSS_HEIGHT: 16,                 // tinggi lemparan penuh (butir) = 2 blok
+  TOSS_SPEED: 70,                  // kecepatan samping lemparan penuh (butir/detik)
+  TOSS_GRAVITY: 300,               // gravitasi butir yang melayang (butir/detik²)
+  // Kocok: spam kiri-kanan → lapisan permukaan teracak pelan, seperti mengocok gelas berisi pasir.
+  SLOSH_FLIPS: 3,                  // jumlah ganti arah...
+  SLOSH_WINDOW: 1.2,               // ...dalam rentang detik ini untuk mulai mengocok
+  SLOSH_TIME: 0.4,                 // kocok berlanjut sekian detik setelah ganti arah terakhir
+  SLOSH_SWAPS: 25,                 // tukaran butir per tick (gempa: QUAKE_SWAPS)
+  SLOSH_DEPTH: 16,                 // hanya sedalam ini (butir) dari permukaan tiap kolom
+
   // Event pengganggu
   EVENT_FIRST: [35, 50],           // detik sampai event pertama (acak di rentang ini)
   EVENT_WARN: 3,                   // detik peringatan sebelum event mulai
+  EVENT_SPREAD: 0.2,               // jeda antar event acak ±20% dari rata-rata level (lihat eventGap)
+  BOSS_EVENT_DELAY: 3,             // detik setelah masuk level boss sampai peringatan event yang pasti muncul
   QUAKE_DURATION: 1.6,
   QUAKE_JITTER: 0.35,
   QUAKE_SWAPS: 400,                // tukar butir acak per tick saat gempa (mengacak isi tumpukan)
@@ -47,10 +67,15 @@ export const CFG = {
 
   DANGER_Y: 2 * BLOCK,             // pasir di atas garis ini = bahaya
   DANGER_GRACE: 1.5,
+  SPAWN_WAIT: 1.5,                 // detik piece berikutnya boleh menunggu tempat muncul kosong sebelum kalah
   NEAR_MISS: BLOCK,                // prestasi NYARIS: clear saat pasir sampai ≤ 1 blok di bawah garis bahaya (atau lewat)
 
-  CLEAR_FLASH: 0.3,                // durasi kedip + hitstop saat clear
-  CLEAR_FLASH_PER_CHAIN: 0.04,
+  // Kedip + hitstop saat clear (lihat clearFlash di bawah). Selama kedip, tombol diabaikan.
+  CLEAR_FLASH: 0.3,                // chain 1
+  CLEAR_FLASH_PER_CHAIN: 0.04,     // tambahan per langkah chain...
+  CLEAR_FLASH_MAX: 0.5,            // ...sampai batas ini (tercapai di chain 6)
+  CLEAR_FLASH_FAST_CHAIN: 15,      // mulai chain ini kedip dipersingkat supaya chain panjang tidak tersendat
+  CLEAR_FLASH_FAST: 0.2,
   MAX_CHAIN_MULT: 8,
 
   DAS: 0.15,
@@ -59,17 +84,27 @@ export const CFG = {
 
 // ------------------------------------------------------------ kesulitan per level
 // Kurva bergerigi (GDD 4.2): tiap level ke-5 adalah level BOSS (event jauh lebih sering,
-// kecepatan tidak ikut naik); level sesudahnya LEMBAH (kecepatan turun, event jarang).
-// Setelah kecepatan mentok (level 27) yang terus naik pelan hanya event dan batu.
+// kecepatan tidak ikut naik, event pasti muncul); level sesudahnya LEMBAH (kecepatan turun, event lebih longgar).
+// Setelah kecepatan mentok (level 40) yang terus naik pelan hanya event dan batu.
 const FALL = [0.8, 0.72, 0.65, 0.58, 0.58, 0.55, 0.5, 0.455, 0.41, 0.41, 0.38, 0.35, 0.32,
   0.29, 0.29, 0.27, 0.25, 0.23, 0.21, 0.21, 0.2, 0.19, 0.18, 0.17, 0.17];   // detik per baris, level 1..25
-const FALL_MIN = 0.15;
-// Jeda antar event [min, maks] detik untuk level 1..20 (event pertama tetap EVENT_FIRST).
-const EVENT_GAPS = [[45, 75], [45, 75], [45, 70], [40, 65], [20, 30], [60, 90], [40, 60], [40, 60], [40, 60],
-  [18, 25], [60, 90], [35, 50], [35, 50], [35, 50], [15, 22], [60, 90], [30, 45], [30, 45], [30, 45], [12, 18]];
-
+// Level 26..30 turun 0,01/level (0,16 → 0,12), lalu 0,11 di level 35 dan 0,10 (minimum) di level 40.
+function fallFor(level) {
+  if (level <= FALL.length) return FALL[level - 1];
+  if (level <= 30) return Math.round((FALL[FALL.length - 1] - (level - FALL.length) * 0.01) * 100) / 100;
+  if (level < 35) return 0.12;
+  if (level < 40) return 0.11;
+  return 0.10;
+}
 export const isBossLevel = (level) => level % 5 === 0;
 export const isTroughLevel = (level) => level > 1 && level % 5 === 1;
+
+// Lama kedip (detik) untuk langkah chain ke-n: naik pelan sampai batas, lalu dipersingkat di chain panjang.
+// Contoh: chain 1 = 0,30 · chain 6+ = 0,50 · chain 15+ = 0,20.
+export function clearFlash(chain) {
+  if (chain >= CFG.CLEAR_FLASH_FAST_CHAIN) return CFG.CLEAR_FLASH_FAST;
+  return Math.min(CFG.CLEAR_FLASH_MAX, CFG.CLEAR_FLASH + CFG.CLEAR_FLASH_PER_CHAIN * (chain - 1));
+}
 
 export function colorsForLevel(level) {
   if (level >= 12) return 5;
@@ -92,20 +127,28 @@ function gunChance(level) {
   if (level >= 2) return 0.08;
   return 0;
 }
-function eventGap(level) {
-  if (level <= 20) return EVENT_GAPS[level - 1];
-  const k = Math.max(0, Math.floor((level - 26) / 5));   // makin rapat tiap 5 level setelah level 25
-  const around = (mid, spread) => [mid - spread, mid + spread];
-  if (isBossLevel(level)) return around(Math.max(9, 13 - k * 0.5), 3);
-  if (isTroughLevel(level)) return around(Math.max(50, 75 - k * 2), 15);
-  return around(Math.max(22, 34 - k), 6);
+// Jeda rata-rata antar event di level normal: turun 1,5 dtk/level sampai 20 dtk (level 21),
+// lalu 0,25 dtk/level sampai minimum 12 dtk (level 53). Tidak pernah naik lagi.
+function normalGap(level) {
+  if (level <= 21) return 50 - 1.5 * (level - 1);
+  return Math.max(12, 20 - 0.25 * (level - 21));
 }
+// Boss: setengah jeda normal (min 9 dtk). Lembah: sama dengan level normal sebelum boss,
+// jadi lebih santai dari boss tapi tidak pernah lebih jarang dari level-level sebelumnya.
+function eventGap(level) {
+  const mid = isBossLevel(level) ? Math.max(9, normalGap(level) * 0.5)
+    : isTroughLevel(level) ? normalGap(level - 2) : normalGap(level);
+  return [mid * (1 - CFG.EVENT_SPREAD), mid * (1 + CFG.EVENT_SPREAD)];
+}
+
+// Jenis event yang pasti muncul di level boss: bergiliran gempa → papan miring → angin.
+const BOSS_EVENTS = ['quake', 'force', 'wind'];
+export const bossEventType = (level) => BOSS_EVENTS[(Math.floor(level / 5) - 1) % BOSS_EVENTS.length];
 
 // Semua angka kesulitan untuk satu level. Peluang batu/mesiu = peluang NYATA per piece.
 export function levelConfig(level) {
   level = Math.max(1, Math.floor(level));
-  const fall = CFG.FALL_OVERRIDE > 0 ? CFG.FALL_OVERRIDE
-    : level <= FALL.length ? FALL[level - 1] : Math.max(FALL_MIN, FALL[FALL.length - 1] - (level - FALL.length) * 0.01);
+  const fall = CFG.FALL_OVERRIDE > 0 ? CFG.FALL_OVERRIDE : fallFor(level);
   return {
     fall, colors: colorsForLevel(level), stone: stoneChance(level), gun: gunChance(level),
     eventGap: eventGap(level), boss: isBossLevel(level), trough: isTroughLevel(level),

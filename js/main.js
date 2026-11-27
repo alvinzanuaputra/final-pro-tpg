@@ -481,6 +481,8 @@ events.on('rotate', () => sfx.rotate());
 events.on('land', (d) => { if (d.hard) sfx.hardDrop(d); else sfx.land(d); });
 events.on('tiltStart', (dir) => sfx.tilt(dir));
 events.on('tiltFail', () => sfx.tiltFail());
+// Lempar pasir saat ganti arah: desis pasir terbang; makin kuat makin keras.
+events.on('tiltFlip', (d) => { if (d.grains > 0) { sfx.windPush(d.dir); if (d.strength > 0.5) sfx.scatter(d.dir > 0 ? 20 : 60); } });
 events.on('eventWarn', () => sfx.warn());
 events.on('eventStart', (e) => {
   if (e.type === 'quake') sfx.quake();

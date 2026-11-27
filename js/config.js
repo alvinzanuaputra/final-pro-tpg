@@ -34,6 +34,24 @@ export const CFG = {
   TILT_REFILL_DELAY: 0.4,          // jeda sebelum meter mulai terisi setelah dilepas
   TILT_MIN_START: 0.1,             // minimal isi meter untuk mulai miring
 
+  // Lempar pasir: tahan miring lalu langsung ganti arah (Q→E / E→Q). Butir permukaan di sisi yang
+  // menumpuk terangkat dan terbang melengkung ke arah baru (pasir & mesiu saja; batu terlalu berat).
+  FLIP_WINDOW: 0.15,               // detik maksimal antara arah lama selesai dan arah baru mulai
+  FLIP_COST: 0.08,                 // potongan meter miring tiap ganti arah (di luar pemakaian biasa)
+  FLIP_FULL_HOLD: 0.6,             // lama tahan arah lama untuk lemparan penuh
+  TOSS_BASE: 0.15,                 // kekuatan minimal (tahan sebentar / spam) → butir hanya melompat kecil
+  TOSS_MIN: 12,                    // butir terangkat pada kekuatan minimal...
+  TOSS_MAX: 100,                   // ...dan pada kekuatan penuh
+  TOSS_HEIGHT: 16,                 // tinggi lemparan penuh (butir) = 2 blok
+  TOSS_SPEED: 70,                  // kecepatan samping lemparan penuh (butir/detik)
+  TOSS_GRAVITY: 300,               // gravitasi butir yang melayang (butir/detik²)
+  // Kocok: spam kiri-kanan → lapisan permukaan teracak pelan, seperti mengocok gelas berisi pasir.
+  SLOSH_FLIPS: 3,                  // jumlah ganti arah...
+  SLOSH_WINDOW: 1.2,               // ...dalam rentang detik ini untuk mulai mengocok
+  SLOSH_TIME: 0.4,                 // kocok berlanjut sekian detik setelah ganti arah terakhir
+  SLOSH_SWAPS: 25,                 // tukaran butir per tick (gempa: QUAKE_SWAPS)
+  SLOSH_DEPTH: 16,                 // hanya sedalam ini (butir) dari permukaan tiap kolom
+
   // Event pengganggu
   EVENT_FIRST: [35, 50],           // detik sampai event pertama (acak di rentang ini)
   EVENT_WARN: 3,                   // detik peringatan sebelum event mulai

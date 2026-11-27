@@ -158,6 +158,8 @@ export class Renderer {
     ev.on('levelUp', (d) => this.addFloat(`LEVEL ${d.level}!`, BX + W / 2, BY + 50, d.boss ? this.pal.boss : this.pal.accent, 1.6));
     ev.on('gameOver', () => { this.shake = 6; });
     ev.on('quake', () => { this.shake = 10; });
+    ev.on('tiltFlip', (d) => { if (d.grains > 0) this.shake = Math.max(this.shake, 1 + d.strength * 2); });
+    ev.on('slosh', () => { this.shake = Math.max(this.shake, 2); });
     ev.on('eventStart', (e) => { if (e.type === 'quake') this.shake = 6; });
     ev.on('explode', (d) => {
       this.shake = Math.max(this.shake, 8);
@@ -444,6 +446,14 @@ export class Renderer {
         else if (x < front - 6) pix[i] = this.white;
         else if (x < front) pix[i] = this.sandPix[c[i] * 4] | 0; // ujung kilatan: warna paling terang
       }
+    }
+
+    // Butir yang sedang terlempar (tilt ganti arah): warna & tekstur sama dengan butir aslinya.
+    const air = g.sand.airborne;
+    for (let k = 0; k < air.length; k++) {
+      const a = air[k], ax = a.x | 0, ay = a.y | 0;
+      if (ax < 0 || ax >= W || ay < 0 || ay >= H) continue;
+      pix[ay * W + ax] = a.m === MAT_GUN ? this.tex[a.c].gun[a.s % 3].p : sp[a.c * 4 + a.s];
     }
 
     // ghost + piece aktif

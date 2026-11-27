@@ -59,6 +59,13 @@ Lihat NEXT piece → geser/putar → piece mendarat → hancur jadi pasir
 - Kegunaan: mendorong warna sampai menyentuh dinding (syarat jembatan), meratakan gundukan yang mendekati garis bahaya, memancing kaskade, dan **melawan event Miring Paksa**.
 - Tilt **tidak** menggeser piece yang sedang jatuh, hanya pasir.
 - Visual: papan berotasi ±3° dengan *easing*; meter di panel berkedip saat aktif.
+- **Lempar pasir:** tahan Q lalu langsung ganti ke E (atau sebaliknya, jeda ≤ 0,15 detik) → butir permukaan di sisi yang menumpuk **terangkat** dan terbang melengkung ke arah baru, lalu jatuh lagi.
+  - Kekuatan mengikuti lama tahan arah sebelumnya (momentum): 12 butir untuk tahan sebentar sampai 100 butir untuk tahan ≥ 0,6 detik. Tinggi lemparan maksimal ±2 blok.
+  - Hanya pasir & mesiu; batu terlalu berat dan tidak ikut terangkat.
+  - Selama melayang, butir **tidak** dihitung jembatan maupun garis bahaya (tidak bisa membuat kalah). Butir yang jatuh di atas piece ikut menumpang sampai piece terkunci.
+  - Setiap ganti arah memotong **8% meter** di luar pemakaian biasa.
+- **Kocok:** spam kiri-kanan (≥ 3 ganti arah dalam 1,2 detik) → lapisan permukaan (±2 blok dari atas tiap kolom) teracak pelan seperti mengocok gelas berisi pasir (25 tukaran/tick, gempa 400). Berlanjut 0,4 detik setelah ganti arah terakhir. Dengan meter penuh, spam habis setelah sekitar 7 ganti arah.
+- Angka-angkanya ada di `CFG` (`FLIP_*`, `TOSS_*`, `SLOSH_*`).
 
 ### 3.5 Material Khusus
 Setiap piece punya **warna** (3–5 warna aktif) **dan material**. Material khusus muncul sesekali (tidak pernah dua kali berturut-turut). Teksturnya sudah terlihat di **preview NEXT** (plus label "BATU"/"MESIU") supaya pemain bisa bersiap. Saat pertama kali muncul di sebuah perangkat, toast memperkenalkan material itu.

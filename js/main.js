@@ -697,6 +697,15 @@ function layout() {
   canvas.style.height = '0px';
   const r = slotEl.getBoundingClientRect();
   renderer.resize(r.width - 2, r.height - 2);
+  // Modal HTML (nama, KREDIT) memakai font 5x7 yang sama dengan ukuran titik yang sama dengan teks kanvas
+  // (titik kanvas = renderer.tp piksel perangkat → bagi dpr untuk px CSS; judul = ukuran 1.5 seperti kanvas).
+  // Di HP titik kanvas bisa sangat kecil, jadi ada batas minimum (px CSS) supaya modal tetap terbaca;
+  // dibulatkan ke piksel perangkat supaya huruf tetap tajam.
+  const dpr = window.devicePixelRatio || 1, root = document.documentElement.style;
+  const dot = (size, minCss) => `${Math.max(renderer.px(size), Math.round(minCss * dpr)) / dpr}px`;
+  root.setProperty('--mpx', dot(1, 2));
+  root.setProperty('--mpx-title', dot(1.5, 3));
+  root.setProperty('--mpx-small', dot(0.75, 1.5));   // teks sekunder (isi/keterangan)
 }
 let layoutQueued = false;
 const queueLayout = () => {

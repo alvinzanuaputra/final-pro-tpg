@@ -18,8 +18,8 @@
   font-display: swap;
 }
 @font-face {
-  font-family: "KenneyPixel";
-  src: url("assets/font/kenney-pixel.ttf") format("truetype");
+  font-family: "SandTiltPixel";   /* font 5x7 game (js/font.js), dibuat oleh tools/make-font.py */
+  src: url("assets/font/sandtilt-5x7.ttf") format("truetype");
   font-display: swap;
 }
 
@@ -33,7 +33,11 @@
   --accent: #f2c14e;
   --danger: #ff4d5e;
   --font: "KenneyMini", "Courier New", ui-monospace, monospace;
-  --font-body: "KenneyPixel", "Courier New", ui-monospace, monospace;   /* teks modal HTML */
+  --font-body: "SandTiltPixel", "Courier New", ui-monospace, monospace;   /* teks modal HTML = font kanvas */
+  /* ukuran satu titik huruf modal (px CSS) = titik teks kanvas; diisi main.js. 1em font = 8 titik */
+  --mpx: 2px;
+  --mpx-title: 3px;
+  --mpx-small: 1.5px;   /* teks sekunder (isi/keterangan) = ukuran 0,75 seperti petunjuk kecil di kanvas */
   /* warna modal HTML = palet tema aktif (diisi main.js); bawaan = KLASIK */
   --m-bg: #14121f;
   --m-shadow: #0b0a12;
@@ -287,8 +291,9 @@ button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-
 /* ------------------------------------------------------------ modal HTML (nama, KREDIT)
    Tampilan disamakan dengan modal di kanvas (CARA MAIN, BAHASA): bingkai tipis warna frame,
    latar gelap, judul warna aksen, tombol fokus terisi aksen. Warna --m-* diisi main.js dari palet
-   tema yang aktif. Font Kenney Pixel (huruf 5x7, ada huruf kecil) tanpa tebal palsu supaya
-   mudah dibaca. Ukuran: teks & tombol 20px, judul & kolom nama 28px. */
+   tema yang aktif. Font = font 5x7 game yang sama dengan kanvas (assets/font/sandtilt-5x7.ttf),
+   tanpa tebal palsu. Ukuran titik hurufnya sama dengan teks kanvas (--mpx, --mpx-title dari main.js),
+   jadi teks modal dan teks game terlihat identik. */
 .overlay {
   position: absolute;
   inset: 0;
@@ -316,16 +321,17 @@ button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-
 .overlay.modal .panel::-webkit-scrollbar { width: 6px; }
 .overlay.modal .panel::-webkit-scrollbar-track { background: var(--m-bg); }
 .overlay.modal .panel::-webkit-scrollbar-thumb { background: var(--m-frame); }
+/* Lebar & jarak dihitung dalam titik huruf (--mpx), jadi panel ikut membesar bersama hurufnya
+   (layar laptop tinggi → huruf besar → panel lebar), bukan teks besar di kotak sempit yang memanjang. */
 .panel {
-  width: min(92%, 320px);
+  width: min(92vw, calc(var(--mpx) * 150));
   background: var(--m-bg);
   border: 2px solid var(--m-frame);
-  padding: 12px 14px;
+  padding: calc(var(--mpx) * 5) calc(var(--mpx) * 6);
   color: var(--m-text);
   font-family: var(--font-body);
-  font-size: 20px;
-  line-height: 0.95;   /* Kenney Pixel punya ruang atas-bawah besar; ini membuat baris rapat */
-  letter-spacing: 1px;
+  font-size: calc(var(--mpx) * 8);
+  line-height: 1.25;   /* 10 titik per baris: 7 titik huruf + 3 titik jarak, sama seperti teks kanvas */
   text-transform: uppercase;   /* kapital semua, seperti teks di kanvas */
   font-synthesis: none;
   -webkit-font-smoothing: none;
@@ -333,20 +339,18 @@ button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-
 .panel h2, .panel h3, .panel b, .panel strong, .panel button, .panel input { font-weight: normal; }
 .panel h2 {
   margin: 0 0 6px;
-  font-size: 28px;
+  font-size: calc(var(--mpx-title) * 8);
   color: var(--m-accent);
-  letter-spacing: 1px;
   text-align: center;
   text-transform: uppercase;
 }
-.panel p { margin: 0 0 8px; color: var(--m-dim); }
+.panel p { margin: 0 0 calc(var(--mpx) * 3); color: var(--m-dim); font-size: calc(var(--mpx-small) * 8); }
 .panel input {
   width: 100%;
   padding: 2px 8px;
-  font: 28px var(--font-body);
-  line-height: 1;
+  font: calc(var(--mpx-title) * 8) var(--font-body);
+  line-height: 1.25;
   text-transform: uppercase;
-  letter-spacing: 1px;
   background: var(--m-shadow);
   color: var(--m-text);
   border: 2px solid var(--m-frame);
@@ -357,15 +361,14 @@ button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-
 }
 .panel input::placeholder { color: var(--m-dim); opacity: 1; }
 .panel input:focus { border-color: var(--m-accent); }
-.panel .err { min-height: 0.95em; margin: 6px 0; color: var(--m-danger); }
-.panel .btns { display: flex; gap: 8px; }
+.panel .err { min-height: 1.25em; margin: calc(var(--mpx) * 2) 0; color: var(--m-danger); font-size: calc(var(--mpx-small) * 8); }
+.panel .btns { display: flex; gap: calc(var(--mpx) * 3); }
 /* tombol = tombol menu kanvas: bingkai frame + isi gelap; tombol utama / fokus = isi aksen */
 .panel button {
   flex: 1;
-  padding: 4px 8px 5px;
-  font: 20px var(--font-body);
-  line-height: 0.95;
-  letter-spacing: 1px;
+  padding: calc(var(--mpx) * 1.5) calc(var(--mpx) * 3);
+  font: calc(var(--mpx) * 8) var(--font-body);
+  line-height: 1.25;
   text-transform: uppercase;
   background: var(--m-shadow);
   color: var(--m-text);
@@ -376,28 +379,42 @@ button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-
 .panel button:focus-visible { background: var(--m-accent); border-color: var(--m-accent); color: var(--m-shadow); outline: none; }
 .panel button:active { transform: translate(1px, 1px); }
 
+/* ------------------------------------------------------------ kotak NAMA PEMAIN
+   Semua rata tengah seperti modal kanvas; jarak antarbagian rata (dalam titik huruf). Kolom input
+   memakai ukuran teks biasa (bukan ukuran judul). Pesan error hanya memakan tempat saat ada isinya. */
+#nameform { text-align: center; }
+#nameform h2 { margin: 0 0 calc(var(--mpx) * 2); }
+#nameform p { margin: 0 0 calc(var(--mpx) * 4); }
+#nameform input {
+  font-size: calc(var(--mpx) * 8);
+  padding: calc(var(--mpx) * 2) calc(var(--mpx) * 3);
+  text-align: center;
+}
+#nameform .err { min-height: 0; margin: calc(var(--mpx) * 2.5) 0 0; }
+#nameform .err:empty { display: none; }
+#nameform .btns { margin-top: calc(var(--mpx) * 4); }
+
 /* ------------------------------------------------------------ layar KREDIT */
 .panel.credits {
-  width: min(94%, 420px);
+  width: min(94vw, calc(var(--mpx) * 230));
   text-align: left;
   -webkit-overflow-scrolling: touch;
 }
 .credits h2 { margin-bottom: 4px; }
 .credits h3 {
-  margin: 10px 0 6px;
-  font-size: 20px;
-  letter-spacing: 1px;
+  margin: calc(var(--mpx) * 4) 0 calc(var(--mpx) * 2.5);
+  font-size: calc(var(--mpx) * 8);
   color: var(--m-accent);
   border-bottom: 1px solid var(--m-frame);
   padding-bottom: 3px;
 }
 .credits .credits-game { margin: 0; text-align: center; color: var(--m-text); }
 .credits .credits-game b { color: var(--m-accent); }
-.credits .credits-course { margin: 2px 0 0; text-align: center; color: var(--m-dim); }
-.credits .dev { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.credits .credits-course { margin: 2px 0 0; text-align: center; color: var(--m-dim); font-size: calc(var(--mpx-small) * 8); }
+.credits .dev { display: flex; gap: calc(var(--mpx) * 4); align-items: center; margin-bottom: calc(var(--mpx) * 2.5); }
 .credits .dev img {
-  width: 60px;
-  height: 60px;
+  width: calc(var(--mpx) * 24);
+  height: calc(var(--mpx) * 24);
   flex: none;
   object-fit: cover;
   border: 2px solid var(--m-frame);
@@ -405,11 +422,11 @@ button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-
 }
 .credits .dev-info { display: flex; flex-direction: column; gap: 0; min-width: 0; }
 .credits .dev-info b { color: var(--m-text); }
-.credits .dev-info span { color: var(--m-dim); }
-.credits .dev-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; }
+.credits .dev-info span { color: var(--m-dim); font-size: calc(var(--mpx-small) * 8); }
+.credits .dev-links { display: flex; flex-wrap: wrap; gap: calc(var(--mpx) * 2); margin-top: calc(var(--mpx) * 1.5); }
 .credits .dev-links a {
-  padding: 2px 6px 3px;
-  letter-spacing: 1px;
+  padding: calc(var(--mpx) * 0.5) calc(var(--mpx) * 2.5) var(--mpx);
+  font-size: calc(var(--mpx-small) * 8);
   color: var(--m-accent);
   border: 2px solid var(--m-accent);
   text-decoration: none;
@@ -418,7 +435,7 @@ button { font-family: var(--font); cursor: pointer; touch-action: none; -webkit-
 .credits .dev-links a:focus-visible { background: var(--m-accent); color: var(--m-shadow); outline: none; }
 .credits .dev-links a.down { border-color: var(--m-frame); color: var(--m-dim); }
 .credits .dev-links a:active { transform: translate(1px, 1px); }
-.credits .credits-assets { margin: 0; padding-left: 16px; color: var(--m-dim); }
-.credits .credits-assets li { margin-bottom: 3px; }
+.credits .credits-assets { margin: 0; padding-left: calc(var(--mpx) * 6); color: var(--m-dim); font-size: calc(var(--mpx-small) * 8); }
+.credits .credits-assets li { margin-bottom: var(--mpx); }
 .credits .credits-assets b { color: var(--m-text); }
-.credits .btns { margin-top: 10px; }
+.credits .btns { margin-top: calc(var(--mpx) * 4); }

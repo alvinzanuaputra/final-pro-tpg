@@ -1,5 +1,5 @@
 // Teks trailer per bahasa. Huruf kapital, font 5x7 game (tanpa '&' dan huruf beraksen).
-// Istilah versi Indonesia mengikuti game: MESIU, GEMPA, ANGIN, PAPAN MIRING, REAKSI BERANTAI, NYARIS, PRESTASI, PERINGKAT.
+// Istilah versi Indonesia mengikuti game: MESIU, GEMPA, ANGIN, PAPAN MIRING, REAKSI BERANTAI, PRESTASI, PERINGKAT.
 // '\n' = pindah baris; baris kedua memakai warna aksen.
 export type Lang = 'en' | 'id';
 
@@ -29,7 +29,7 @@ export const COPY: Record<Lang, { shots: Record<string, string>; card: [string, 
       quake: 'GEMPA\nMENGGUNCANG',
       wind: 'ANGIN\nMENDORONG',
       force: 'PAPAN\nMIRING PAKSA',
-      save: 'NYARIS\nKALAH',
+      save: 'DI UJUNG\nTANDUK',
     },
     card: ['KUMPULKAN PRESTASI', 'PERINGKAT ONLINE', 'KEYBOARD ATAU LAYAR SENTUH'],
     play: 'MAIN GRATIS DI BROWSER',

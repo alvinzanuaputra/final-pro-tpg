@@ -2,7 +2,7 @@ import React from 'react';
 import { AbsoluteFill, Img, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { Backdrop, BOARD, Flash, GameText, SlamText } from './components';
 import { GameLogo, SandRain } from './gameLogo';
-import { eventFrames, SHOT } from './footage';
+import { eventFrames, SHOTS_BY_LANG } from './footage';
 import { BAR, Beat, bars, buildCut, CutAudio, ease, ev, fit, lastHit } from './Trailer';
 import { C, sec } from './theme';
 import { COPY, Lang } from './copy';
@@ -25,25 +25,28 @@ const shot = (b: Omit<ShotBeat, 'kind' | 'side'>): ShotBeat => ({ kind: 'shot', 
 
 // Tiap adegan dimulai tepat sebelum aksinya dan berhenti +-0.7 dtk setelah momen terakhir.
 const AFTER = sec(0.7);
-const SHOTS: ShotBeat[] = [
+const shotsFor = (L: Lang): ShotBeat[] => [
   shot({ shot: 'crumble', from: 22, bars: fit(22, 120), textAt: 0 }),
-  shot({ shot: 'tilt', from: 32, bars: fit(32, lastHit('tilt') + AFTER), textAt: 0, flashIn: true }),
+  shot({ shot: 'tilt', from: 32, bars: fit(32, lastHit(L, 'tilt') + AFTER), textAt: 0, flashIn: true }),
   // rekaman chain tanpa toast trofi (toast game melebar keluar area papan yang dipotong)
-  shot({ shot: 'chain-quiet', from: 30, bars: fit(30, lastHit('chain-quiet') + AFTER), textAt: 0, counter: true }),
-  shot({ shot: 'gunpowder', from: 34, bars: fit(34, lastHit('gunpowder') + AFTER), textAt: 0, flashIn: true }),
-  shot({ shot: 'save', from: 0, bars: fit(0, lastHit('save') + AFTER), textAt: 0,
-    heartbeatUntil: ev('save', 'clear')[0], flashIn: true, accent: C.danger }),
+  shot({ shot: 'chain-quiet', from: 30, bars: fit(30, lastHit(L, 'chain-quiet') + AFTER), textAt: 0, counter: true }),
+  shot({ shot: 'gunpowder', from: 34, bars: fit(34, lastHit(L, 'gunpowder') + AFTER), textAt: 0, flashIn: true }),
+  shot({ shot: 'save', from: 0, bars: fit(0, lastHit(L, 'save') + AFTER), textAt: 0,
+    heartbeatUntil: ev(L, 'save', 'clear')[0], flashIn: true, accent: C.danger }),
 ];
-const used = SHOTS.reduce((a, b) => a + bars(b.bars), 0);
-const BEATS: Beat[] = [...SHOTS, { kind: 'outro', bars: (TARGET - used) / BAR }];   // sisa waktu untuk logo
-const CUTS = { en: buildCut(BEATS, 'en'), id: buildCut(BEATS, 'id') };
-export const SHORT_FRAMES = CUTS.id.total;
+function beatsFor(L: Lang): Beat[] {
+  const shots = shotsFor(L);
+  const used = shots.reduce((a, b) => a + bars(b.bars), 0);
+  return [...shots, { kind: 'outro', bars: (TARGET - used) / BAR }];   // sisa waktu untuk logo
+}
+const CUTS = { en: buildCut(beatsFor('en'), 'en'), id: buildCut(beatsFor('id'), 'id') };
+export const SHORT_FRAMES: Record<Lang, number> = { en: CUTS.en.total, id: CUTS.id.total };
 
 // ----------------------------------------------------------------------------------------------------------------
 /** Hanya area papan dari rekaman, diperbesar; zoom kecil saat chain/ledakan, dorongan pelan sepanjang adegan. */
 const Board: React.FC<{ b: ShotBeat; lang: Lang }> = ({ b, lang }) => {
   const f = useCurrentFrame();
-  const meta = SHOT[b.shot];
+  const meta = SHOTS_BY_LANG[lang][b.shot];
   const len = bars(b.bars);
   const idx = Math.min(meta.frames - 1, b.from + f);
   const hits = [...eventFrames(meta, 'clear', (d) => Number(d.chain) >= 2), ...eventFrames(meta, 'explode')].map((h) => h - b.from);
@@ -77,7 +80,7 @@ const textPx = (text: string) => Math.min(12, Math.floor(960 / (Math.max(...text
 
 const ShortShot: React.FC<{ b: ShotBeat; lang: Lang }> = ({ b, lang }) => {
   const len = bars(b.bars);
-  const clears = eventFrames(SHOT[b.shot], 'clear').map((f) => f - b.from).filter((f) => f >= 0);
+  const clears = eventFrames(SHOTS_BY_LANG[lang][b.shot], 'clear').map((f) => f - b.from).filter((f) => f >= 0);
   const text = COPY[lang].shots[b.shot] || '';
   return (
     <AbsoluteFill>
@@ -110,7 +113,7 @@ export const Short: React.FC<{ lang?: Lang }> = ({ lang = 'en' }) => (
   <AbsoluteFill>
     <Backdrop />
     <CutAudio cut={CUTS[lang]} />
-    {BEATS.map((b, i) => (
+    {CUTS[lang].beats.map((b, i) => (
       <Sequence key={i} from={CUTS[lang].starts[i]} durationInFrames={bars(b.bars)} name={b.kind === 'shot' ? b.shot : b.kind}>
         {b.kind === 'shot' && <ShortShot b={b} lang={lang} />}
         {b.kind === 'outro' && (<><Flash /><ShortOutro lang={lang} /></>)}

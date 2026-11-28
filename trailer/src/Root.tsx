@@ -8,12 +8,12 @@ import { FPS } from './theme';
 export const Root: React.FC = () => (
   <>
     <Composition id="Trailer" component={Trailer} defaultProps={{ lang: 'en' as const }}
-      durationInFrames={TRAILER_FRAMES} fps={FPS} width={1920} height={1080} />
+      durationInFrames={TRAILER_FRAMES.en} fps={FPS} width={1920} height={1080} />
     <Composition id="TrailerID" component={Trailer} defaultProps={{ lang: 'id' as const }}
-      durationInFrames={TRAILER_FRAMES} fps={FPS} width={1920} height={1080} />
+      durationInFrames={TRAILER_FRAMES.id} fps={FPS} width={1920} height={1080} />
     <Composition id="Short" component={Short} defaultProps={{ lang: 'en' as const }}
-      durationInFrames={SHORT_FRAMES} fps={FPS} width={SHORT_W} height={SHORT_H} />
+      durationInFrames={SHORT_FRAMES.en} fps={FPS} width={SHORT_W} height={SHORT_H} />
     <Composition id="ShortID" component={Short} defaultProps={{ lang: 'id' as const }}
-      durationInFrames={SHORT_FRAMES} fps={FPS} width={SHORT_W} height={SHORT_H} />
+      durationInFrames={SHORT_FRAMES.id} fps={FPS} width={SHORT_W} height={SHORT_H} />
   </>
 );

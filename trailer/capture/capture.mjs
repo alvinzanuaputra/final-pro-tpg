@@ -52,6 +52,19 @@ async function captureShot(browser, base, shot) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   await page.clock.install({ time: 0 });                 // jam palsu (masih berjalan sampai di-pause di bawah)
   await page.addInitScript(SEEDED_RANDOM);
+  // Loop game asli (requestAnimationFrame) dijalankan manual satu frame per langkah rekam: sim + gambar dengan dt
+  // sungguhan, jadi getaran layar, partikel, dan animasi mereda/bergerak seperti di game (advanceTime() menggambar
+  // dengan dt = 0 sehingga getaran tidak pernah berhenti).
+  await page.addInitScript(() => {
+    window.__rafQ = [];
+    window.requestAnimationFrame = (cb) => { window.__rafQ.push(cb); return window.__rafQ.length; };
+    window.cancelAnimationFrame = () => {};
+    window.__runFrame = () => {
+      window.__rafNow += 1000 / 60 + 1e-9;     // sedikit di atas 1/60 dtk: tepat satu tick game per frame
+      const q = window.__rafQ; window.__rafQ = [];
+      for (const cb of q) cb(window.__rafNow);
+    };
+  });
   await page.addInitScript({ path: join(HERE, 'scenario.js') });
   // Pemain "berpengalaman": semua trofi sudah terbuka (tidak ada toast mengganggu), material sudah dikenal,
   // skor terbaik realistis. Shot boleh menimpa lewat shot.storage (mis. menyisakan satu trofi untuk dimunculkan).
@@ -62,6 +75,7 @@ async function captureShot(browser, base, shot) {
   // Bekukan jam: tanpa ini loop requestAnimationFrame game tetap jalan real-time di sela rekaman dan menggeser
   // hasil +-1 frame (tidak deterministik). Setelah pause, game hanya maju lewat advanceTime().
   await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+  await page.evaluate(() => { window.__rafNow = performance.now(); window.__runFrame(); });   // samakan jam loop game
   // startGame() mengaktifkan input di requestAnimationFrame berikutnya; jam sedang dijeda, jadi aktifkan langsung
   await page.evaluate(() => { window.sandtilt.startGame(); window.sandtilt.input.enabled = true; window.__hookEvents(); });
   if (shot.setup) await page.evaluate(shot.setup);
@@ -93,7 +107,7 @@ async function captureShot(browser, base, shot) {
         if (kind !== 'up') window.dispatchEvent(new KeyboardEvent('keydown', { code, key: code }));
         if (kind !== 'down') window.dispatchEvent(new KeyboardEvent('keyup', { code, key: code }));
       }
-      window.advanceTime(dt);
+      window.__runFrame();
       window.__after && window.__after(f);
       const st = JSON.parse(window.render_game_to_text());
       const ev = window.__EV.splice(0);

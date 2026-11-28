@@ -2,7 +2,7 @@ import React from 'react';
 import { AbsoluteFill, Audio, Img, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { Backdrop, BOARD, Flash, Footage, GameText, SlamText, SRC_H, SRC_W } from './components';
 import { GameLogo, SandRain } from './gameLogo';
-import { eventFrames, SHOT, SHOTS_BY_LANG } from './footage';
+import { eventFrames, SHOTS_BY_LANG } from './footage';
 import { Duck, heartbeat, Sound, soundsFor, trophySound } from './sfx';
 import { C, FPS, sec } from './theme';
 import { COPY, Lang } from './copy';
@@ -26,23 +26,25 @@ export type Beat =
 // Panjang dibulatkan ke atas ke ketukan musik (1/4 bar) supaya potongan tetap di irama.
 export const fit = (from: number, end: number) => Math.ceil((end - from) / (BAR / 4)) / 4;     // -> jumlah bar
 export const AFTER = sec(1);
-export const ev = (shot: string, name: string, filter?: (d: Record<string, unknown>) => boolean) => eventFrames(SHOT[shot], name, filter);
-export const lastHit = (shot: string) => Math.max(...ev(shot, 'clear'), ...ev(shot, 'explode'));
+// Timing dihitung dari rekaman bahasa masing-masing (timing geser/putar piece bisa menggeser momen beberapa frame).
+export const ev = (lang: Lang, shot: string, name: string, filter?: (d: Record<string, unknown>) => boolean) =>
+  eventFrames(SHOTS_BY_LANG[lang][shot], name, filter);
+export const lastHit = (lang: Lang, shot: string) => Math.max(...ev(lang, shot, 'clear'), ...ev(lang, shot, 'explode'));
 
-const BEATS: Beat[] = [
+const beatsFor = (L: Lang): Beat[] => [
   // intro: dua piece mendarat (close-up lalu mundur), berhenti sebelum clear pertama di rekaman
   { kind: 'shot', shot: 'crumble', from: 20, bars: fit(20, 196), side: 'right', closeup: true, textAt: 108 },
-  { kind: 'shot', shot: 'tilt', from: 0, bars: fit(0, lastHit('tilt') + AFTER), side: 'left', textAt: 4, flashIn: true },
-  { kind: 'shot', shot: 'bridge', from: 0, bars: fit(0, ev('bridge', 'clear')[0] + AFTER), side: 'right', textAt: 4 },
-  { kind: 'shot', shot: 'chain', from: 0, bars: fit(0, lastHit('chain') + AFTER), side: 'left', textAt: 4, counter: true,
-    trophy: { at: ev('chain', 'clear', (d) => d.chain === 3)[0], tier: 'silver' } },
-  { kind: 'shot', shot: 'gunpowder', from: 0, bars: fit(0, lastHit('gunpowder') + AFTER), side: 'right', textAt: 4, flashIn: true },
-  { kind: 'shot', shot: 'quake', from: 0, bars: fit(0, ev('quake', 'eventStart')[0] + sec(1.2)), side: 'left', textAt: 4 },
-  { kind: 'shot', shot: 'wind', from: 0, bars: fit(0, ev('wind', 'windPush')[1] + sec(0.4)), side: 'right', textAt: 4 },
-  { kind: 'shot', shot: 'force', from: 0, bars: fit(0, lastHit('force') + sec(0.6)), side: 'left', textAt: 4 },
+  { kind: 'shot', shot: 'tilt', from: 0, bars: fit(0, lastHit(L, 'tilt') + AFTER), side: 'left', textAt: 4, flashIn: true },
+  { kind: 'shot', shot: 'bridge', from: 0, bars: fit(0, ev(L, 'bridge', 'clear')[0] + AFTER), side: 'right', textAt: 4 },
+  { kind: 'shot', shot: 'chain', from: 0, bars: fit(0, lastHit(L, 'chain') + AFTER), side: 'left', textAt: 4, counter: true,
+    trophy: { at: ev(L, 'chain', 'clear', (d) => d.chain === 3)[0], tier: 'silver' } },
+  { kind: 'shot', shot: 'gunpowder', from: 0, bars: fit(0, lastHit(L, 'gunpowder') + AFTER), side: 'right', textAt: 4, flashIn: true },
+  { kind: 'shot', shot: 'quake', from: 0, bars: fit(0, ev(L, 'quake', 'eventStart')[0] + sec(1.2)), side: 'left', textAt: 4 },
+  { kind: 'shot', shot: 'wind', from: 0, bars: fit(0, ev(L, 'wind', 'windPush')[1] + sec(0.4)), side: 'right', textAt: 4 },
+  { kind: 'shot', shot: 'force', from: 0, bars: fit(0, lastHit(L, 'force') + sec(0.6)), side: 'left', textAt: 4 },
   { kind: 'card', bars: 1.5 },
-  { kind: 'shot', shot: 'save', from: 0, bars: fit(0, lastHit('save') + AFTER), side: 'right', textAt: 2,
-    heartbeatUntil: ev('save', 'clear')[0], flashIn: true, accent: C.danger },   // merah = warna garis bahaya di game
+  { kind: 'shot', shot: 'save', from: 0, bars: fit(0, lastHit(L, 'save') + AFTER), side: 'right', textAt: 2,
+    heartbeatUntil: ev(L, 'save', 'clear')[0], flashIn: true, accent: C.danger },   // merah = warna garis bahaya di game
   { kind: 'outro', bars: 2.5 },
 ];
 
@@ -113,16 +115,16 @@ export const CutAudio: React.FC<{ cut: Cut }> = ({ cut }) => (
   </>
 );
 
-const CUTS: Record<Lang, Cut> = { en: buildCut(BEATS, 'en'), id: buildCut(BEATS, 'id') };
-export const TRAILER_FRAMES = CUTS.id.total;
+const CUTS: Record<Lang, Cut> = { en: buildCut(beatsFor('en'), 'en'), id: buildCut(beatsFor('id'), 'id') };
+export const TRAILER_FRAMES: Record<Lang, number> = { en: CUTS.en.total, id: CUTS.id.total };
 
 // ----------------------------------------------------------------------------------------------------------------
 // kamera
 export const ease = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
 const SHIFT = 270;   // geser game ke samping (koordinat rekaman) supaya ada ruang teks
 
-function camFor(b: Extract<Beat, { kind: 'shot' }>) {
-  const meta = SHOT[b.shot];
+function camFor(b: Extract<Beat, { kind: 'shot' }>, lang: Lang) {
+  const meta = SHOTS_BY_LANG[lang][b.shot];
   // "punch": zoom kecil setiap chain >= 2 dan ledakan
   const hits = [...eventFrames(meta, 'clear', (d) => Number(d.chain) >= 2), ...eventFrames(meta, 'explode')].map((f) => f - b.from);
   const len = bars(b.bars);
@@ -164,13 +166,13 @@ export const ChainCounter: React.FC<{ frames: number[]; x: number; top?: number;
 };
 
 const ShotBeat: React.FC<{ b: Extract<Beat, { kind: 'shot' }>; lang: Lang }> = ({ b, lang }) => {
-  const meta = SHOT[b.shot];
+  const meta = SHOTS_BY_LANG[lang][b.shot];
   const len = bars(b.bars);
   const clears = eventFrames(meta, 'clear').map((f) => f - b.from).filter((f) => f >= 0);
   const text = COPY[lang].shots[b.shot] || '';
   return (
     <AbsoluteFill>
-      <Footage name={`${lang}/${b.shot}`} frames={meta.frames} startAt={b.from} cam={camFor(b)} height={1040} />
+      <Footage name={`${lang}/${b.shot}`} frames={meta.frames} startAt={b.from} cam={camFor(b, lang)} height={1040} />
       {text && (
         <Sequence from={b.textAt || 0} durationInFrames={len - (b.textAt || 0)}>
           <SlamText text={text} colors={[C.text, b.accent || C.accent]} x={textX(b.side)} y={b.counter ? 440 : 540} px={textPx(text)}
@@ -233,7 +235,7 @@ export const Trailer: React.FC<{ lang?: Lang }> = ({ lang = 'en' }) => (
   <AbsoluteFill>
     <Backdrop />
     <CutAudio cut={CUTS[lang]} />
-    {BEATS.map((b, i) => (
+    {CUTS[lang].beats.map((b, i) => (
       <Sequence key={i} from={CUTS[lang].starts[i]} durationInFrames={bars(b.bars)} name={b.kind === 'shot' ? b.shot : b.kind}>
         {b.kind === 'shot' && <ShotBeat b={b} lang={lang} />}
         {b.kind === 'card' && <Card len={bars(b.bars)} lang={lang} />}

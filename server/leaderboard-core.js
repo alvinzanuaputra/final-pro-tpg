@@ -23,6 +23,10 @@ const RUN_TTL_SEC = 8 * 24 * 3600;      // run boleh dikirim (termasuk kirim ula
 const RUN_RATE_WINDOW = 600;             // detik
 const RUN_RATE_MAX = 30;                 // run baru per IP per jendela
 const DURATION_SLACK = 5;                // detik toleransi durasi klien vs jam server
+// Batas anti-injeksi (lihat plausible): skor & jumlah clear harus terikat ke waktu nyata.
+const MAX_CLEARS_PER_SEC = 5;            // lantai hitstop: 1 clear mustahil < CLEAR_FLASH_FAST (0,2 dtk)
+const CLEAR_SLACK = 5;                   // toleransi aditif untuk game sangat singkat / pembulatan
+const MAX_POINTS_PER_SEC = 20000;        // plafon laju skor RATA-RATA; jauh di atas kemampuan manusia (tunable)
 
 export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS sandtilt_players (
@@ -79,12 +83,18 @@ export function weekInfo(nowSec) {
   return { weekStart, resetIn: nextMondayUtc - nowSec };
 }
 
-// Batas skor wajar (anti-curang ringan, sama dengan versi PHP).
+// Batas skor wajar (anti-curang, sama dengan versi PHP).
+// Kunci: skor & clears client-authoritative, jadi keduanya WAJIB terikat ke waktu nyata
+// (duration sudah diverifikasi lawan jam server di handle()). Tanpa ini, clears yang tak dibatasi
+// bisa melar plafon tanpa batas dan skor berapa pun lolos dalam hitungan detik.
 export function plausible({ score, level, clears, duration }) {
   const maxPerClear = 80 * 160 * 8 * (1 + 0.1 * (level - 1)) * 2;
-  const maxScore = clears * maxPerClear + duration * 200 + 1000;
+  const maxByClears = clears * maxPerClear + duration * 200 + 1000;
+  const maxByTime = duration * MAX_POINTS_PER_SEC + 1000;            // #2: skor terikat waktu nyata
+  const maxScore = Math.min(maxByClears, maxByTime);
+  const clearsOk = clears <= duration * MAX_CLEARS_PER_SEC + CLEAR_SLACK;   // #1: clears terikat waktu nyata
   const levelOk = level <= 1 + Math.floor(clears / 5);
-  return score >= 0 && score <= maxScore && levelOk && duration >= 5 && duration <= 6 * 3600;
+  return score >= 0 && score <= maxScore && clearsOk && levelOk && duration >= 5 && duration <= 6 * 3600;
 }
 
 const fail = (message, code) => ({ success: false, message, ...(code ? { code } : {}) });

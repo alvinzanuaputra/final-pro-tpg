@@ -56,7 +56,8 @@ export const CFG = {
   EVENT_FIRST: [35, 50],           // detik sampai event pertama (acak di rentang ini)
   EVENT_WARN: 3,                   // detik peringatan sebelum event mulai
   EVENT_SPREAD: 0.2,               // jeda antar event acak ±20% dari rata-rata level (lihat eventGap)
-  BOSS_EVENT_DELAY: 3,             // detik setelah masuk level boss sampai peringatan event yang pasti muncul
+  EVENT_CLEAR_CUT: 1.5,            // tiap clear memotong hitung mundur event sekian detik (pemain cepat → event lebih sering)
+  BOSS_EVENT_DELAY: 3,            // detik setelah masuk level boss sampai peringatan event yang pasti muncul
   QUAKE_DURATION: 1.6,
   QUAKE_JITTER: 0.35,
   QUAKE_SWAPS: 400,                // tukar butir acak per tick saat gempa (mengacak isi tumpukan)

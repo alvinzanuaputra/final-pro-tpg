@@ -29,6 +29,9 @@ const RUN_TTL_SEC = 691200;       // 8 hari
 const RUN_RATE_WINDOW = 600;
 const RUN_RATE_MAX = 30;
 const DURATION_SLACK = 5;
+const MAX_CLEARS_PER_SEC = 5;     // lantai hitstop: 1 clear mustahil < 0,2 dtk (anti-injeksi, lihat SUBMIT)
+const CLEAR_SLACK = 5;            // toleransi aditif untuk game sangat singkat / pembulatan
+const MAX_POINTS_PER_SEC = 20000; // plafon laju skor RATA-RATA; jauh di atas kemampuan manusia (tunable)
 
 function respond($data) { echo json_encode($data); exit; }
 function fail($message, $code = null) {
@@ -205,11 +208,17 @@ try {
         if ($used !== 1) fail('Permainan ini tidak terdaftar atau sudah dikirim.', 'INVALID_RUN');
         $startedAt = (int)q($pdo, "SELECT started_at FROM $T_RUNS WHERE run_id = :r", [':r' => $runId])->fetchColumn();
 
-        // Validasi kewajaran (anti-curang ringan) + durasi tidak boleh melebihi jam server.
+        // Validasi kewajaran + durasi tidak boleh melebihi jam server.
+        // Kunci: skor & clears client-authoritative, jadi keduanya WAJIB terikat ke waktu nyata
+        // (duration sudah dicek lawan jam server). Tanpa ini, clears tak dibatasi melar plafon
+        // tanpa batas dan skor berapa pun lolos dalam hitungan detik. (Sinkron dgn leaderboard-core.js.)
         $maxPerClear = 80 * 160 * 8 * (1 + 0.1 * ($level - 1)) * 2;
-        $maxScore = $clears * $maxPerClear + $duration * 200 + 1000;
+        $maxByClears = $clears * $maxPerClear + $duration * 200 + 1000;
+        $maxByTime = $duration * MAX_POINTS_PER_SEC + 1000;                   // #2: skor terikat waktu nyata
+        $maxScore = min($maxByClears, $maxByTime);
+        $clearsOk = $clears <= $duration * MAX_CLEARS_PER_SEC + CLEAR_SLACK;  // #1: clears terikat waktu nyata
         $levelOk = $level <= 1 + intdiv($clears, 5);
-        if ($score < 0 || $score > $maxScore || !$levelOk || $duration < 5 || $duration > 6 * 3600
+        if ($score < 0 || $score > $maxScore || !$clearsOk || !$levelOk || $duration < 5 || $duration > 6 * 3600
             || $duration > $nowTs - $startedAt + DURATION_SLACK) {
             fail('Skor tidak valid.', 'INVALID_SCORE');
         }

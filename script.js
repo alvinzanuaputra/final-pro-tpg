@@ -65,7 +65,8 @@ const CFG = {
   EVENT_FIRST: [35, 50],           // detik sampai event pertama (acak di rentang ini)
   EVENT_WARN: 3,                   // detik peringatan sebelum event mulai
   EVENT_SPREAD: 0.2,               // jeda antar event acak ±20% dari rata-rata level (lihat eventGap)
-  BOSS_EVENT_DELAY: 3,             // detik setelah masuk level boss sampai peringatan event yang pasti muncul
+  EVENT_CLEAR_CUT: 1.5,            // tiap clear memotong hitung mundur event sekian detik (pemain cepat → event lebih sering)
+  BOSS_EVENT_DELAY: 3,            // detik setelah masuk level boss sampai peringatan event yang pasti muncul
   QUAKE_DURATION: 1.6,
   QUAKE_JITTER: 0.35,
   QUAKE_SWAPS: 400,                // tukar butir acak per tick saat gempa (mengacak isi tumpukan)
@@ -696,7 +697,7 @@ return { TYPES, SHAPES, Bag };
 
 // ===================================================================== js/game.js
 __mod["game"] = (function () {
-const { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig, clearFlash, bossEventType } = __mod["config"];
+const { BLOCK, COLS, W, H, CFG, MAT_SAND, MAT_STONE, MAT_GUN, colorsForLevel, levelConfig, clearFlash, bossEventType, isBossLevel } = __mod["config"];
 const { makeRng } = __mod["util"];
 const { Sand } = __mod["sim"];
 const { SHAPES, Bag } = __mod["pieces"];
@@ -1095,6 +1096,9 @@ class Game {
     this.score += points;
     this.grainsCleared += grains;
     this.clears += res.bridges;
+    // Event berbasis waktu terasa jarang bagi pemain yang clear-nya cepat: tiap clear ikut
+    // memajukan hitung mundur event berikutnya.
+    if (!this.event) this.eventTimer = Math.max(0, this.eventTimer - CFG.EVENT_CLEAR_CUT * res.bridges);
 
     const dur = clearFlash(this.chain);
     this.clearing = { cells: res.cells, t: dur, t0: dur };
@@ -1106,13 +1110,22 @@ class Game {
 
     const newLevel = 1 + Math.floor(this.clears / CFG.CLEARS_PER_LEVEL);
     if (newLevel > this.level && this.rules.level) {
+      // Satu clear bisa melompati lebih dari satu level: cari level boss yang ikut terlewati.
+      let bossLevel = 0;
+      for (let l = this.level + 1; l <= newLevel; l++) if (isBossLevel(l)) bossLevel = l;
       this.level = newLevel;
       const lc = levelConfig(newLevel);
       if (lc.colors > this.numColors) { this.numColors = lc.colors; this.breather = CFG.BREATHER; }
-      // Level boss: event pasti muncul sebentar lagi. Level lembah: hitung mundur langsung
-      // dilonggarkan ke jeda lembah (event yang sedang berjalan tidak diganggu).
-      if (lc.boss && this.rules.events) this.queueBossEvent(newLevel);
-      else if (lc.trough && !this.event) this.eventTimer = Math.max(this.eventTimer, this.randRange(lc.eventGap));
+      // Level boss (termasuk yang terlewati dalam satu chain): event pasti muncul sebentar lagi.
+      // Selama event boss masih menunggu, hitung mundurnya tidak boleh diperpanjang lagi.
+      if (bossLevel && this.rules.events) this.queueBossEvent(bossLevel);
+      else if (!this.event && !this.bossEvent) {
+        // Lembah: hitung mundur dilonggarkan ke jeda lembah. Level lain: hitung mundur dipotong
+        // ke batas atas jeda level baru, supaya naik level cepat tidak membawa jeda level lama.
+        const gap = lc.eventGap;
+        this.eventTimer = lc.trough ? Math.max(this.eventTimer, this.randRange(gap))
+          : Math.min(this.eventTimer, gap[1]);
+      }
       this.events.emit('levelUp', { level: this.level, colors: this.numColors, boss: lc.boss, tiltsUsed: this.tilt.used });
     }
   }

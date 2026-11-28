@@ -149,5 +149,5 @@ Versi gameedukasi memakai API pusat yang sama (satu papan dengan Vercel); PHP + 
 
 1. Salin `api/db_config.example.php` menjadi `api/db_config.php`, isi `DB_HOST`, `DB_USER`, `DB_PASS` server, dan ganti `IP_SALT`. **Jangan commit file ini.**
 2. Pastikan prefix di `database.sql` sama dengan `TABLE_PREFIX` di `db_config.php`, lalu jalankan `database.sql` (3 tabel: `_players`, `_scores`, `_runs`).
-3. Jalankan `node tools/build-bundle.mjs`, lalu zip: `index.html`, `style.css`, `script.js`, `assets/`, `api/` (hanya `leaderboard.php` dan `db_config.php`, tanpa `.sqlite` dan `leaderboard.js`), `database.sql`. Folder `js/`, `server/`, `tools/`, `node_modules/`, dan `package.json` tidak perlu ikut.
+3. Jalankan `npm run upload` (= `node tools/build-upload.mjs`). Skrip ini mem-bundle `script.js` lalu membuat `dist/sandtilt-gameedukasi.zip` yang hanya berisi `index.html`, `style.css`, `script.js`, `assets/`, `api/leaderboard.php`, `api/db_config.php`, dan `database.sql`. Upload zip itu. **Jangan zip seluruh folder proyek**: gameedukasi menolak zip yang berisi ekstensi seperti `.sh` (`tools/build-sfx.sh`) atau `.py`; skrip ini juga gagal kalau ada file seperti itu yang lolos.
 4. Kalau alamat gameedukasi bukan `gameedukasi.com` / `www.gameedukasi.com`, tambahkan origin-nya ke `ALLOWED_ORIGINS` di Vercel. Kalau tidak, game di sana memakai papan PHP lokal.

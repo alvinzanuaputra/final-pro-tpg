@@ -5,6 +5,7 @@
   "description": "SandTilt: game statis + Vercel Function leaderboard pusat (api/leaderboard.js)",
   "scripts": {
     "bundle": "node tools/build-bundle.mjs",
+    "upload": "node tools/build-upload.mjs",
     "test:api": "node tools/test-leaderboard-api.mjs"
   },
   "dependencies": {

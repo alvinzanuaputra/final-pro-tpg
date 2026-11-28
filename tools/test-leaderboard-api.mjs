@@ -33,6 +33,7 @@ const wait = async (sec) => { if (phpUrl) await new Promise((r) => setTimeout(r,
 const tag = Math.random().toString(36).slice(2, 6);
 const A = { token: `aaaaaaaa-test-${tag}-0000-000000000001`, name: `Ani${tag}` };
 const B = { token: `bbbbbbbb-test-${tag}-0000-000000000002`, name: `Budi${tag}` };
+const C = { token: `cccccccc-test-${tag}-0000-000000000003`, name: `Cici${tag}` };
 const ok = (r, msg) => assert.equal(r.success, true, `${msg}: ${JSON.stringify(r)}`);
 const code = (r, c, msg) => assert.equal(r.code, c, `${msg}: ${JSON.stringify(r)}`);
 const game = { score: 500, max_chain: 2, level: 1, clears: 2, duration_sec: 6 };
@@ -71,6 +72,27 @@ assert.ok(r.rank_weekly <= rankA, 'B (900) di atas A (500)');
 run = await call('POST', 'start_run', { token: A.token });
 await wait(2);
 code(await call('POST', 'submit', { token: A.token, player_name: A.name, run_id: run.run_id, ...game, score: 99_999_999 }), 'INVALID_SCORE', 'skor mustahil');
+
+// 5b. REGRESI anti-injeksi: skor & clears client-authoritative WAJIB terikat waktu nyata.
+// run yang gagal INVALID_SCORE tetap terpakai, jadi tiap percobaan butuh run baru.
+const freshRun = async (who) => { const x = await call('POST', 'start_run', { token: who.token }); await wait(6); return x.run_id; };
+
+// Exploit lama: clears digelembungkan → plafon melar → skor 2 miliar. Dulu DITERIMA, kini harus ditolak.
+code(await call('POST', 'submit', { token: A.token, player_name: A.name, run_id: await freshRun(A),
+  score: 2_000_000_000, max_chain: 255, level: 999, clears: 200_000, duration_sec: 6 }), 'INVALID_SCORE', 'injeksi: clears raksasa');
+
+// Fix #1: clears melebihi ~5/detik ditolak walau skor kecil (6 dtk → maks ~35 clears).
+code(await call('POST', 'submit', { token: A.token, player_name: A.name, run_id: await freshRun(A),
+  score: 1000, max_chain: 2, level: 1, clears: 100, duration_sec: 6 }), 'INVALID_SCORE', 'injeksi: clears > waktu');
+
+// Fix #2: skor melebihi plafon laju waktu ditolak walau clears masih dalam batas (6 dtk → maks ~121k).
+code(await call('POST', 'submit', { token: A.token, player_name: A.name, run_id: await freshRun(A),
+  score: 5_000_000, max_chain: 8, level: 7, clears: 30, duration_sec: 6 }), 'INVALID_SCORE', 'injeksi: skor > laju waktu');
+
+// Pemain jujur dengan skor jauh lebih tinggi dari skor dasar tes TETAP diterima (bukan false-positive).
+r = await call('POST', 'submit', { token: C.token, player_name: C.name, run_id: await freshRun(C),
+  score: 40_000, max_chain: 5, level: 3, clears: 10, duration_sec: 6 });
+ok(r, 'jujur: skor wajar diterima');
 
 // 6. papan tidak membocorkan token
 for (const tab of ['weekly', 'alltime']) {

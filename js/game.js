@@ -397,6 +397,9 @@ export class Game {
     this.score += points;
     this.grainsCleared += grains;
     this.clears += res.bridges;
+    // Event berbasis waktu terasa jarang bagi pemain yang clear-nya cepat: tiap clear ikut
+    // memajukan hitung mundur event berikutnya.
+    if (!this.event) this.eventTimer = Math.max(0, this.eventTimer - CFG.EVENT_CLEAR_CUT * res.bridges);
 
     const dur = clearFlash(this.chain);
     this.clearing = { cells: res.cells, t: dur, t0: dur };
